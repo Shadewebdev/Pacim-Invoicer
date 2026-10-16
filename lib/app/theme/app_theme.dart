@@ -6,6 +6,10 @@ import 'document_type_colors.dart';
 
 const double _controlHeight = 32;
 const Size _controlMinimumSize = Size(0, _controlHeight);
+// Compact density shrinks button minimum sizes by 8 px; controls must stay at
+// exactly 32 px, so buttons opt out of the density adjustment and rely on
+// _controlMinimumSize instead.
+const VisualDensity _controlDensity = VisualDensity.standard;
 final _controlShape = RoundedRectangleBorder(
   borderRadius: BorderRadius.circular(4),
 );
@@ -91,6 +95,7 @@ ThemeData buildAppTheme({
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         minimumSize: _controlMinimumSize,
+        visualDensity: _controlDensity,
         shape: _controlShape,
         textStyle: textTheme.labelLarge,
       ),
@@ -98,6 +103,7 @@ ThemeData buildAppTheme({
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         minimumSize: _controlMinimumSize,
+        visualDensity: _controlDensity,
         elevation: 0,
         shape: _controlShape,
         textStyle: textTheme.labelLarge,
@@ -106,6 +112,7 @@ ThemeData buildAppTheme({
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         minimumSize: _controlMinimumSize,
+        visualDensity: _controlDensity,
         shape: _controlShape,
         side: BorderSide(color: tokens.rule),
         textStyle: textTheme.labelLarge,
@@ -114,6 +121,7 @@ ThemeData buildAppTheme({
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         minimumSize: _controlMinimumSize,
+        visualDensity: _controlDensity,
         shape: _controlShape,
         textStyle: textTheme.labelLarge,
       ),

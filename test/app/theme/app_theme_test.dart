@@ -42,6 +42,7 @@ void main() {
         Color.lerp(light.inkFor(type), Colors.white, 0.45),
       );
     }
+    expect(dark.inkFor(DocumentType.quotation).toARGB32(), 0xFF8CA2D8);
   });
 
   test('extensions copyWith and lerp work', () {
@@ -82,5 +83,32 @@ void main() {
       platform: TargetPlatform.android,
     );
     expect(theme.textTheme.bodyMedium!.fontFamily, 'NotoSans');
+  });
+
+  testWidgets('controls render 32 px tall under compact density', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(
+          brightness: Brightness.light,
+          platform: TargetPlatform.windows,
+        ),
+        home: Scaffold(
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FilledButton(onPressed: () {}, child: const Text('Save')),
+              OutlinedButton(onPressed: () {}, child: const Text('Cancel')),
+              TextButton(onPressed: () {}, child: const Text('Close')),
+              const SizedBox(width: 200, child: TextField()),
+            ],
+          ),
+        ),
+      ),
+    );
+    for (final type in [FilledButton, OutlinedButton, TextButton, TextField]) {
+      expect(tester.getSize(find.byType(type)).height, 32, reason: '$type');
+    }
   });
 }
