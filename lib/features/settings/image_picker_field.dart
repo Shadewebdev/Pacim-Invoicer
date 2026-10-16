@@ -51,8 +51,8 @@ class _ImagePickerFieldState extends ConsumerState<ImagePickerField> {
       errorMessage = exception.message;
     } on Object {
       errorMessage = "Couldn't import that image";
-      if (mounted) setState(() => _errorMessage = errorMessage);
     }
+    if (mounted) setState(() => _errorMessage = errorMessage);
   }
 
   @override

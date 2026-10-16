@@ -116,56 +116,106 @@ void main() {
   });
 }
 
-class _PassThroughImageImportService extends ImageImportService {
-  const _PassThroughImageImportService();
+/// Passes bytes through, or throws [ImageImportException] when [rejects].
+class _FakeImageImportService extends ImageImportService {
+  _FakeImageImportService({this.rejects = false});
+
+  bool rejects;
 
   @override
-  Future<Uint8List> prepareImageForStorage(Uint8List originalBytes) async =>
-      originalBytes;
+  Future<Uint8List> prepareImageForStorage(Uint8List originalBytes) async {
+    if (rejects) throw const ImageImportException();
+    return originalBytes;
+  }
+}
+
+Future<void> _pumpImagePickerField(
+  WidgetTester tester, {
+  required FakeAssetRepository assetRepository,
+  required _FakeImageImportService importService,
+}) async {
+  final container = ProviderContainer(
+    overrides: [
+      settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
+      assetRepositoryProvider.overrideWithValue(assetRepository),
+      imageImportServiceProvider.overrideWithValue(importService),
+    ],
+  );
+  addTearDown(container.dispose);
+  await container.read(settingsControllerProvider.future);
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        theme: buildAppTheme(
+          brightness: Brightness.light,
+          platform: TargetPlatform.windows,
+        ),
+        home: Scaffold(
+          body: ImagePickerField(
+            label: 'Company logo',
+            assetId: null,
+            pickImageBytes: () async => Uint8List.fromList([1, 2, 3]),
+            onImagePicked: container
+                .read(settingsControllerProvider.notifier)
+                .importCompanyLogo,
+            onRemove: () {},
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 void _imageImportTests() {
   testWidgets('a storage failure while importing shows an inline error', (
     tester,
   ) async {
-    final assetRepository = FakeAssetRepository()..failNextStore = true;
-    final container = ProviderContainer(
-      overrides: [
-        settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
-        assetRepositoryProvider.overrideWithValue(assetRepository),
-        imageImportServiceProvider.overrideWithValue(
-          const _PassThroughImageImportService(),
-        ),
-      ],
-    );
-    addTearDown(container.dispose);
-    await container.read(settingsControllerProvider.future);
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: buildAppTheme(
-            brightness: Brightness.light,
-            platform: TargetPlatform.windows,
-          ),
-          home: Scaffold(
-            body: ImagePickerField(
-              label: 'Company logo',
-              assetId: null,
-              pickImageBytes: () async => Uint8List.fromList([1, 2, 3]),
-              onImagePicked: container
-                  .read(settingsControllerProvider.notifier)
-                  .importCompanyLogo,
-              onRemove: () {},
-            ),
-          ),
-        ),
-      ),
+    await _pumpImagePickerField(
+      tester,
+      assetRepository: FakeAssetRepository()..failNextStore = true,
+      importService: _FakeImageImportService(),
     );
 
     await tester.tap(find.text('Choose image'));
     await tester.pumpAndSettle();
 
     expect(find.text("Couldn't import that image"), findsOneWidget);
+  });
+
+  testWidgets('an unsupported image shows its import error message', (
+    tester,
+  ) async {
+    await _pumpImagePickerField(
+      tester,
+      assetRepository: FakeAssetRepository(),
+      importService: _FakeImageImportService(rejects: true),
+    );
+
+    await tester.tap(find.text('Choose image'));
+    await tester.pumpAndSettle();
+
+    expect(find.text("This file isn't a supported image"), findsOneWidget);
+  });
+
+  testWidgets('a successful import clears a previous error', (tester) async {
+    final importService = _FakeImageImportService(rejects: true);
+    await _pumpImagePickerField(
+      tester,
+      assetRepository: FakeAssetRepository(),
+      importService: importService,
+    );
+    await tester.tap(find.text('Choose image'));
+    await tester.pumpAndSettle();
+    expect(find.text("This file isn't a supported image"), findsOneWidget);
+
+    importService.rejects = false;
+    await tester.tap(find.text('Choose image'));
+    await tester.pumpAndSettle();
+
+    expect(find.text("This file isn't a supported image"), findsNothing);
+
+    // Let the debounced settings save finish.
+    await tester.pump(const Duration(seconds: 1));
   });
 }
