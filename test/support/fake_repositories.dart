@@ -101,6 +101,12 @@ class FakeDocumentRepository implements DocumentRepository {
   final Map<String, BusinessDocument> _documents = {};
   final _changes = StreamController<void>.broadcast();
 
+  /// How many times [saveDocument] succeeded.
+  int saveCount = 0;
+
+  /// Makes the next [saveDocument] call throw once.
+  bool failNextSave = false;
+
   List<BusinessDocument> get storedDocuments => _documents.values.toList();
 
   void seed(BusinessDocument document) {
@@ -124,8 +130,15 @@ class FakeDocumentRepository implements DocumentRepository {
     updatedAt: document.updatedAt,
   );
 
+  DateTime _startOfDay(DateTime value) => value.isUtc
+      ? DateTime.utc(value.year, value.month, value.day)
+      : DateTime(value.year, value.month, value.day);
+
   List<DocumentSummary> _matchingSummaries(DocumentListQuery query) {
-    final search = query.searchText.toLowerCase();
+    final search = query.searchText.trim().toLowerCase();
+    final issuedFrom = query.issuedFrom == null
+        ? null
+        : _startOfDay(query.issuedFrom!);
     return _documents.values
         .where((document) => document.documentType == query.documentType)
         .map(_summaryOf)
@@ -134,8 +147,7 @@ class FakeDocumentRepository implements DocumentRepository {
               (search.isEmpty ||
                   summary.documentNumber.toLowerCase().contains(search) ||
                   summary.customerName.toLowerCase().contains(search)) &&
-              (query.issuedFrom == null ||
-                  !summary.issueDate.isBefore(query.issuedFrom!)) &&
+              (issuedFrom == null || !summary.issueDate.isBefore(issuedFrom)) &&
               (query.issuedTo == null ||
                   summary.issueDate.isBefore(
                     DateTime(
@@ -162,7 +174,9 @@ class FakeDocumentRepository implements DocumentRepository {
         ),
         DocumentSortField.updatedAt => a.updatedAt.compareTo(b.updatedAt),
       };
-      return query.sortDescending ? -result : result;
+      if (result != 0) return query.sortDescending ? -result : result;
+      // Like Drift, ties always break by ascending document id.
+      return a.documentId.compareTo(b.documentId);
     }
 
     final sorted = _matchingSummaries(query)..sort(compare);
@@ -238,10 +252,15 @@ class FakeDocumentRepository implements DocumentRepository {
 
   @override
   Future<void> saveDocument(BusinessDocument document) async {
+    if (failNextSave) {
+      failNextSave = false;
+      throw const StorageWriteException('fake save failure');
+    }
     final existing = _documents[document.documentId];
     if (existing?.lockedAt != null) {
       throw DocumentLockedException(document.documentId);
     }
+    saveCount++;
     seed(document);
   }
 
