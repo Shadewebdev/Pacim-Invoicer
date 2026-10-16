@@ -16,6 +16,7 @@ Future<ProviderContainer> pumpApp(WidgetTester tester, Size size) async {
   final container = ProviderContainer(
     overrides: [
       settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
+      documentRepositoryProvider.overrideWithValue(FakeDocumentRepository()),
     ],
   );
   addTearDown(container.dispose);
