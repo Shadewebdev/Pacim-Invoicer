@@ -27,6 +27,7 @@ class DocumentRows extends Table {
   DateTimeColumn get lockedAt => dateTime().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
   IntColumn get schemaVersion => integer()();
+  TextColumn get searchText => text()();
   TextColumn get payloadJson => text()();
 
   @override

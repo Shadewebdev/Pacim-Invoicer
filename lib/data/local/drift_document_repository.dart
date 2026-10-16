@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:pacim_invoicer/data/local/pacim_database.dart';
@@ -12,6 +12,7 @@ import 'package:pacim_invoicer/domain/models/document_summary.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
 import 'package:pacim_invoicer/domain/services/document_totals_calculator.dart';
 
+const String _searchSeparator = '\u001F';
 const String _likeEscapeCharacter = '\\';
 
 class DriftDocumentRepository implements DocumentRepository {
@@ -31,7 +32,10 @@ class DriftDocumentRepository implements DocumentRepository {
   ) {
     final statement = _database.select(_database.documentRows)
       ..where((row) => _matchesQuery(row, query))
-      ..orderBy([(row) => _orderingTerm(row, query)])
+      ..orderBy([
+        (row) => _orderingTerm(row, query),
+        (row) => OrderingTerm.asc(row.documentId),
+      ])
       ..limit(query.limit);
     return statement.watch().map(
       (rows) => rows.map(_summaryFromRow).toList(growable: false),
@@ -48,14 +52,7 @@ class DriftDocumentRepository implements DocumentRepository {
       final pattern = '%${_escapeLikePattern(searchText)}%';
       condition =
           condition &
-          (row.documentNumber.lower().like(
-                pattern,
-                escapeChar: _likeEscapeCharacter,
-              ) |
-              row.customerName.lower().like(
-                pattern,
-                escapeChar: _likeEscapeCharacter,
-              ));
+          row.searchText.like(pattern, escapeChar: _likeEscapeCharacter);
     }
     final issuedFrom = query.issuedFrom;
     if (issuedFrom != null) {
@@ -175,7 +172,7 @@ class DriftDocumentRepository implements DocumentRepository {
       });
     } on DocumentLockedException {
       rethrow;
-    } on Exception catch (error) {
+    } catch (error) {
       throw StorageWriteException(error);
     }
   }
@@ -207,9 +204,17 @@ class DriftDocumentRepository implements DocumentRepository {
       lockedAt: Value(document.lockedAt),
       updatedAt: document.updatedAt,
       schemaVersion: document.schemaVersion,
+      searchText: _searchTextFor(document),
       payloadJson: jsonEncode(document.toJson()),
     );
   }
+
+  /// Lowercased with Dart's Unicode-aware rules, because SQLite lower() is
+  /// ASCII-only. The separator cannot appear in a number or a name.
+  String _searchTextFor(BusinessDocument document) =>
+      '${document.documentNumber}$_searchSeparator'
+              '${document.customerDetails.customerName}'
+          .toLowerCase();
 
   BusinessDocument _documentFromRow(DocumentRow row) {
     final payload = jsonDecode(row.payloadJson) as Map<String, dynamic>;

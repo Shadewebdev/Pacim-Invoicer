@@ -3,12 +3,15 @@ import 'package:pacim_invoicer/data/repositories/document_repository.dart';
 import 'package:pacim_invoicer/domain/exceptions/document_exceptions.dart';
 import 'package:pacim_invoicer/domain/models/business_document.dart';
 import 'package:pacim_invoicer/domain/models/document_list_query.dart';
+import 'package:pacim_invoicer/domain/models/document_summary.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
 import 'package:pacim_invoicer/domain/services/document_totals_calculator.dart';
 
 import '../../support/document_builders.dart';
 
 /// Behaviour every [DocumentRepository] implementation must satisfy.
+///
+/// Every call to [createRepository] must return a fresh, empty repository.
 void runDocumentRepositoryContract(
   Future<DocumentRepository> Function() createRepository,
 ) {
@@ -75,6 +78,8 @@ void runDocumentRepositoryContract(
       },
     );
 
+    // Search is infix on number or customer. An implementation may filter on
+    // the client, since stores such as Firestore have no substring query.
     test('watchDocumentSummaries filters by type and searchText on number or '
         'customer, case-insensitive', () async {
       await repository.saveDocument(
@@ -269,15 +274,92 @@ void runDocumentRepositoryContract(
 
     test('watchDocumentSummaries emits again after a save', () async {
       const query = DocumentListQuery(documentType: DocumentType.quotation);
-      final emissions = <int>[];
-      final subscription = repository
-          .watchDocumentSummaries(query)
-          .listen((summaries) => emissions.add(summaries.length));
+      final expectation = expectLater(
+        repository.watchDocumentSummaries(query),
+        emitsThrough(
+          predicate<List<DocumentSummary>>(
+            (summaries) => summaries.any((s) => s.documentId == 'a'),
+            'contains the saved document',
+          ),
+        ),
+      );
       await pumpEventQueue();
       await repository.saveDocument(documentWith(id: 'a'));
-      await pumpEventQueue();
-      await subscription.cancel();
-      expect(emissions, [0, 1]);
+      await expectation;
+    });
+
+    test('saving an existing unlocked document overwrites it and refreshes its '
+        'summary', () async {
+      await repository.saveDocument(documentWith(id: 'a'));
+      final changed = documentWith(
+        id: 'a',
+        customer: 'Renamed Co',
+        unitPriceMinor: 5000,
+      );
+      await repository.saveDocument(changed);
+
+      expect(await repository.getDocument('a'), changed);
+      final summaries = await repository
+          .watchDocumentSummaries(
+            const DocumentListQuery(documentType: DocumentType.quotation),
+          )
+          .first;
+      expect(summaries, hasLength(1));
+      expect(summaries.single.customerName, 'Renamed Co');
+      expect(
+        summaries.single.grandTotalMinor,
+        const DocumentTotalsCalculator().calculate(changed).grandTotalMinor,
+      );
+    });
+
+    test(
+      'watchDocument emits the document and re-emits after a save',
+      () async {
+        final original = documentWith(id: 'a');
+        await repository.saveDocument(original);
+        final updated = original.copyWith(notes: 'updated notes');
+        final expectation = expectLater(
+          repository.watchDocument('a'),
+          emitsThrough(updated),
+        );
+        await pumpEventQueue();
+        await repository.saveDocument(updated);
+        await expectation;
+      },
+    );
+
+    test('watchDocument for an unknown id emits DocumentNotFoundException', () {
+      expect(
+        repository.watchDocument('missing'),
+        emitsError(isA<DocumentNotFoundException>()),
+      );
+    });
+
+    test('customer sort is case-insensitive', () async {
+      await repository.saveDocument(
+        documentWith(id: 'c', number: 'QT-2026-0003', customer: 'charlie'),
+      );
+      await repository.saveDocument(
+        documentWith(id: 'a', number: 'QT-2026-0001', customer: 'alpha'),
+      );
+      await repository.saveDocument(
+        documentWith(id: 'b', number: 'QT-2026-0002', customer: 'Bravo'),
+      );
+      final ids = await listedIds(
+        const DocumentListQuery(
+          documentType: DocumentType.quotation,
+          sortField: DocumentSortField.customerName,
+          sortDescending: false,
+        ),
+      );
+      expect(ids, ['a', 'b', 'c']);
+    });
+
+    test('search finds non-ASCII customer names regardless of case', () async {
+      await repository.saveDocument(documentWith(id: 'a', customer: 'École'));
+      const query = DocumentListQuery(documentType: DocumentType.quotation);
+      expect(await listedIds(query.copyWith(searchText: 'École')), ['a']);
+      expect(await listedIds(query.copyWith(searchText: 'école')), ['a']);
     });
 
     group('saveUpgrade', () {

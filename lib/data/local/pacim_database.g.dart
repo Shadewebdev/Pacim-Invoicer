@@ -141,6 +141,17 @@ class $DocumentRowsTable extends DocumentRows
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _searchTextMeta = const VerificationMeta(
+    'searchText',
+  );
+  @override
+  late final GeneratedColumn<String> searchText = GeneratedColumn<String>(
+    'search_text',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
     'payloadJson',
   );
@@ -166,6 +177,7 @@ class $DocumentRowsTable extends DocumentRows
     lockedAt,
     updatedAt,
     schemaVersion,
+    searchText,
     payloadJson,
   ];
   @override
@@ -293,6 +305,14 @@ class $DocumentRowsTable extends DocumentRows
     } else if (isInserting) {
       context.missing(_schemaVersionMeta);
     }
+    if (data.containsKey('search_text')) {
+      context.handle(
+        _searchTextMeta,
+        searchText.isAcceptableOrUnknown(data['search_text']!, _searchTextMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_searchTextMeta);
+    }
     if (data.containsKey('payload_json')) {
       context.handle(
         _payloadJsonMeta,
@@ -361,6 +381,10 @@ class $DocumentRowsTable extends DocumentRows
         DriftSqlType.int,
         data['${effectivePrefix}schema_version'],
       )!,
+      searchText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}search_text'],
+      )!,
       payloadJson: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}payload_json'],
@@ -387,6 +411,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
   final DateTime? lockedAt;
   final DateTime updatedAt;
   final int schemaVersion;
+  final String searchText;
   final String payloadJson;
   const DocumentRow({
     required this.documentId,
@@ -401,6 +426,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
     this.lockedAt,
     required this.updatedAt,
     required this.schemaVersion,
+    required this.searchText,
     required this.payloadJson,
   });
   @override
@@ -422,6 +448,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     map['schema_version'] = Variable<int>(schemaVersion);
+    map['search_text'] = Variable<String>(searchText);
     map['payload_json'] = Variable<String>(payloadJson);
     return map;
   }
@@ -444,6 +471,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
           : Value(lockedAt),
       updatedAt: Value(updatedAt),
       schemaVersion: Value(schemaVersion),
+      searchText: Value(searchText),
       payloadJson: Value(payloadJson),
     );
   }
@@ -466,6 +494,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
       lockedAt: serializer.fromJson<DateTime?>(json['lockedAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       schemaVersion: serializer.fromJson<int>(json['schemaVersion']),
+      searchText: serializer.fromJson<String>(json['searchText']),
       payloadJson: serializer.fromJson<String>(json['payloadJson']),
     );
   }
@@ -485,6 +514,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
       'lockedAt': serializer.toJson<DateTime?>(lockedAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'schemaVersion': serializer.toJson<int>(schemaVersion),
+      'searchText': serializer.toJson<String>(searchText),
       'payloadJson': serializer.toJson<String>(payloadJson),
     };
   }
@@ -502,6 +532,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
     Value<DateTime?> lockedAt = const Value.absent(),
     DateTime? updatedAt,
     int? schemaVersion,
+    String? searchText,
     String? payloadJson,
   }) => DocumentRow(
     documentId: documentId ?? this.documentId,
@@ -518,6 +549,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
     lockedAt: lockedAt.present ? lockedAt.value : this.lockedAt,
     updatedAt: updatedAt ?? this.updatedAt,
     schemaVersion: schemaVersion ?? this.schemaVersion,
+    searchText: searchText ?? this.searchText,
     payloadJson: payloadJson ?? this.payloadJson,
   );
   DocumentRow copyWithCompanion(DocumentRowsCompanion data) {
@@ -550,6 +582,9 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
       schemaVersion: data.schemaVersion.present
           ? data.schemaVersion.value
           : this.schemaVersion,
+      searchText: data.searchText.present
+          ? data.searchText.value
+          : this.searchText,
       payloadJson: data.payloadJson.present
           ? data.payloadJson.value
           : this.payloadJson,
@@ -571,6 +606,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
           ..write('lockedAt: $lockedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('schemaVersion: $schemaVersion, ')
+          ..write('searchText: $searchText, ')
           ..write('payloadJson: $payloadJson')
           ..write(')'))
         .toString();
@@ -590,6 +626,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
     lockedAt,
     updatedAt,
     schemaVersion,
+    searchText,
     payloadJson,
   );
   @override
@@ -608,6 +645,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
           other.lockedAt == this.lockedAt &&
           other.updatedAt == this.updatedAt &&
           other.schemaVersion == this.schemaVersion &&
+          other.searchText == this.searchText &&
           other.payloadJson == this.payloadJson);
 }
 
@@ -624,6 +662,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
   final Value<DateTime?> lockedAt;
   final Value<DateTime> updatedAt;
   final Value<int> schemaVersion;
+  final Value<String> searchText;
   final Value<String> payloadJson;
   final Value<int> rowid;
   const DocumentRowsCompanion({
@@ -639,6 +678,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
     this.lockedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.schemaVersion = const Value.absent(),
+    this.searchText = const Value.absent(),
     this.payloadJson = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -655,6 +695,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
     this.lockedAt = const Value.absent(),
     required DateTime updatedAt,
     required int schemaVersion,
+    required String searchText,
     required String payloadJson,
     this.rowid = const Value.absent(),
   }) : documentId = Value(documentId),
@@ -667,6 +708,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
        currencyCode = Value(currencyCode),
        updatedAt = Value(updatedAt),
        schemaVersion = Value(schemaVersion),
+       searchText = Value(searchText),
        payloadJson = Value(payloadJson);
   static Insertable<DocumentRow> custom({
     Expression<String>? documentId,
@@ -681,6 +723,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
     Expression<DateTime>? lockedAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? schemaVersion,
+    Expression<String>? searchText,
     Expression<String>? payloadJson,
     Expression<int>? rowid,
   }) {
@@ -697,6 +740,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
       if (lockedAt != null) 'locked_at': lockedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (schemaVersion != null) 'schema_version': schemaVersion,
+      if (searchText != null) 'search_text': searchText,
       if (payloadJson != null) 'payload_json': payloadJson,
       if (rowid != null) 'rowid': rowid,
     });
@@ -715,6 +759,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
     Value<DateTime?>? lockedAt,
     Value<DateTime>? updatedAt,
     Value<int>? schemaVersion,
+    Value<String>? searchText,
     Value<String>? payloadJson,
     Value<int>? rowid,
   }) {
@@ -731,6 +776,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
       lockedAt: lockedAt ?? this.lockedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       schemaVersion: schemaVersion ?? this.schemaVersion,
+      searchText: searchText ?? this.searchText,
       payloadJson: payloadJson ?? this.payloadJson,
       rowid: rowid ?? this.rowid,
     );
@@ -775,6 +821,9 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
     if (schemaVersion.present) {
       map['schema_version'] = Variable<int>(schemaVersion.value);
     }
+    if (searchText.present) {
+      map['search_text'] = Variable<String>(searchText.value);
+    }
     if (payloadJson.present) {
       map['payload_json'] = Variable<String>(payloadJson.value);
     }
@@ -799,6 +848,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
           ..write('lockedAt: $lockedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('schemaVersion: $schemaVersion, ')
+          ..write('searchText: $searchText, ')
           ..write('payloadJson: $payloadJson, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -1598,6 +1648,7 @@ typedef $$DocumentRowsTableCreateCompanionBuilder =
       Value<DateTime?> lockedAt,
       required DateTime updatedAt,
       required int schemaVersion,
+      required String searchText,
       required String payloadJson,
       Value<int> rowid,
     });
@@ -1615,6 +1666,7 @@ typedef $$DocumentRowsTableUpdateCompanionBuilder =
       Value<DateTime?> lockedAt,
       Value<DateTime> updatedAt,
       Value<int> schemaVersion,
+      Value<String> searchText,
       Value<String> payloadJson,
       Value<int> rowid,
     });
@@ -1685,6 +1737,11 @@ class $$DocumentRowsTableFilterComposer
 
   ColumnFilters<int> get schemaVersion => $composableBuilder(
     column: $table.schemaVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get searchText => $composableBuilder(
+    column: $table.searchText,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1763,6 +1820,11 @@ class $$DocumentRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get searchText => $composableBuilder(
+    column: $table.searchText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get payloadJson => $composableBuilder(
     column: $table.payloadJson,
     builder: (column) => ColumnOrderings(column),
@@ -1830,6 +1892,11 @@ class $$DocumentRowsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get searchText => $composableBuilder(
+    column: $table.searchText,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get payloadJson => $composableBuilder(
     column: $table.payloadJson,
     builder: (column) => column,
@@ -1879,6 +1946,7 @@ class $$DocumentRowsTableTableManager
                 Value<DateTime?> lockedAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> schemaVersion = const Value.absent(),
+                Value<String> searchText = const Value.absent(),
                 Value<String> payloadJson = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DocumentRowsCompanion(
@@ -1894,6 +1962,7 @@ class $$DocumentRowsTableTableManager
                 lockedAt: lockedAt,
                 updatedAt: updatedAt,
                 schemaVersion: schemaVersion,
+                searchText: searchText,
                 payloadJson: payloadJson,
                 rowid: rowid,
               ),
@@ -1911,6 +1980,7 @@ class $$DocumentRowsTableTableManager
                 Value<DateTime?> lockedAt = const Value.absent(),
                 required DateTime updatedAt,
                 required int schemaVersion,
+                required String searchText,
                 required String payloadJson,
                 Value<int> rowid = const Value.absent(),
               }) => DocumentRowsCompanion.insert(
@@ -1926,6 +1996,7 @@ class $$DocumentRowsTableTableManager
                 lockedAt: lockedAt,
                 updatedAt: updatedAt,
                 schemaVersion: schemaVersion,
+                searchText: searchText,
                 payloadJson: payloadJson,
                 rowid: rowid,
               ),
