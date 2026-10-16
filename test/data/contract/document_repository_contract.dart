@@ -362,12 +362,300 @@ void runDocumentRepositoryContract(
       expect(await listedIds(query.copyWith(searchText: 'école')), ['a']);
     });
 
+    final lockTime = DateTime.utc(2026, 10, 18, 10);
+
+    BusinessDocument derivedFrom(
+      BusinessDocument source, {
+      required String id,
+      required DocumentType type,
+      required String number,
+    }) {
+      return documentWith(
+        id: id,
+        type: type,
+        number: number,
+        chainId: source.chainId,
+      ).copyWith(sourceDocumentId: source.documentId);
+    }
+
+    BusinessDocument lockedCopyOf(BusinessDocument source) =>
+        source.copyWith(lockedAt: lockTime, updatedAt: lockTime);
+
+    Future<bool> isListedAsLocked(BusinessDocument document) async {
+      final summaries = await repository
+          .watchDocumentSummaries(
+            DocumentListQuery(documentType: document.documentType),
+          )
+          .first;
+      return summaries
+          .singleWhere((summary) => summary.documentId == document.documentId)
+          .isLocked;
+    }
+
     group('saveUpgrade', () {
-      // Filled in by Task 11.
-    }, skip: 'Implemented in Task 11');
+      test(
+        'saveUpgrade writes created document and locks source atomically',
+        () async {
+          final quotation = documentWith(id: 'qt');
+          await repository.saveDocument(quotation);
+          final lockedQuotation = lockedCopyOf(quotation);
+          final salesOrder = derivedFrom(
+            quotation,
+            id: 'so',
+            type: DocumentType.salesOrder,
+            number: 'SO-2026-0001',
+          );
+
+          await repository.saveUpgrade(
+            lockedSource: lockedQuotation,
+            createdDocument: salesOrder,
+          );
+
+          expect(await repository.getDocument('qt'), lockedQuotation);
+          expect(await repository.getDocument('so'), salesOrder);
+          expect(await isListedAsLocked(quotation), isTrue);
+          expect(await isListedAsLocked(salesOrder), isFalse);
+          await expectLater(
+            repository.saveDocument(lockedQuotation.copyWith(notes: 'edit')),
+            throwsA(isA<DocumentLockedException>()),
+          );
+        },
+      );
+
+      test('saveUpgrade failure leaves neither change', () async {
+        final quotation = documentWith(id: 'qt');
+        final existingLocked = documentWith(
+          id: 'taken',
+          number: 'SO-2026-0001',
+          type: DocumentType.salesOrder,
+          chainId: 'chain-2',
+        ).copyWith(lockedAt: lockTime);
+        await repository.saveDocument(quotation);
+        await repository.saveDocument(existingLocked);
+        final collidingSalesOrder = derivedFrom(
+          quotation,
+          id: 'taken',
+          type: DocumentType.salesOrder,
+          number: 'SO-2026-0002',
+        );
+
+        await expectLater(
+          repository.saveUpgrade(
+            lockedSource: lockedCopyOf(quotation),
+            createdDocument: collidingSalesOrder,
+          ),
+          throwsA(isA<DocumentLockedException>()),
+        );
+
+        expect(await repository.getDocument('qt'), quotation);
+        expect(await repository.getDocument('taken'), existingLocked);
+      });
+
+      test('saveUpgrade onto an existing unlocked id fails and leaves neither '
+          'change', () async {
+        final quotation = documentWith(id: 'qt');
+        final existingDraft = documentWith(
+          id: 'taken',
+          number: 'SO-2026-0001',
+          type: DocumentType.salesOrder,
+          chainId: 'chain-2',
+        );
+        await repository.saveDocument(quotation);
+        await repository.saveDocument(existingDraft);
+
+        await expectLater(
+          repository.saveUpgrade(
+            lockedSource: lockedCopyOf(quotation),
+            createdDocument: derivedFrom(
+              quotation,
+              id: 'taken',
+              type: DocumentType.salesOrder,
+              number: 'SO-2026-0002',
+            ),
+          ),
+          throwsA(isA<StorageWriteException>()),
+        );
+
+        expect(await repository.getDocument('qt'), quotation);
+        expect(await isListedAsLocked(quotation), isFalse);
+        expect(await repository.getDocument('taken'), existingDraft);
+      });
+
+      test('saveUpgrade from an already locked, unchanged source is allowed '
+          'and keeps the original lock', () async {
+        final salesOrder = documentWith(
+          id: 'so',
+          number: 'SO-2026-0001',
+          type: DocumentType.salesOrder,
+        ).copyWith(lockedAt: lockTime);
+        await repository.saveDocument(salesOrder);
+        final secondDelivery = derivedFrom(
+          salesOrder,
+          id: 'do2',
+          type: DocumentType.deliveryOrder,
+          number: 'DO-2026-0002',
+        );
+
+        await repository.saveUpgrade(
+          lockedSource: salesOrder,
+          createdDocument: secondDelivery,
+        );
+
+        expect(await repository.getDocument('so'), salesOrder);
+        expect(await repository.getDocument('do2'), secondDelivery);
+      });
+
+      test('saveUpgrade throws DocumentLockedException when the source differs '
+          'from the stored one in more than the lock', () async {
+        final quotation = documentWith(id: 'qt');
+        await repository.saveDocument(quotation);
+        final salesOrder = derivedFrom(
+          quotation,
+          id: 'so',
+          type: DocumentType.salesOrder,
+          number: 'SO-2026-0001',
+        );
+
+        await expectLater(
+          repository.saveUpgrade(
+            lockedSource: lockedCopyOf(quotation).copyWith(notes: 'sneaky'),
+            createdDocument: salesOrder,
+          ),
+          throwsA(isA<DocumentLockedException>()),
+        );
+
+        expect(await repository.getDocument('qt'), quotation);
+        await expectLater(
+          repository.getDocument('so'),
+          throwsA(isA<DocumentNotFoundException>()),
+        );
+      });
+
+      test(
+        'saveUpgrade with an unknown source throws DocumentNotFoundException',
+        () async {
+          final quotation = documentWith(id: 'qt');
+          await expectLater(
+            repository.saveUpgrade(
+              lockedSource: lockedCopyOf(quotation),
+              createdDocument: derivedFrom(
+                quotation,
+                id: 'so',
+                type: DocumentType.salesOrder,
+                number: 'SO-2026-0001',
+              ),
+            ),
+            throwsA(isA<DocumentNotFoundException>()),
+          );
+          await expectLater(
+            repository.getDocument('so'),
+            throwsA(isA<DocumentNotFoundException>()),
+          );
+        },
+      );
+    });
 
     group('deleteDocument', () {
-      // Filled in by Task 11.
-    }, skip: 'Implemented in Task 11');
+      test('deleting the only SO created from a QT unlocks the QT', () async {
+        final quotation = documentWith(id: 'qt');
+        await repository.saveDocument(quotation);
+        await repository.saveUpgrade(
+          lockedSource: lockedCopyOf(quotation),
+          createdDocument: derivedFrom(
+            quotation,
+            id: 'so',
+            type: DocumentType.salesOrder,
+            number: 'SO-2026-0001',
+          ),
+        );
+
+        await repository.deleteDocument('so');
+
+        await expectLater(
+          repository.getDocument('so'),
+          throwsA(isA<DocumentNotFoundException>()),
+        );
+        final unlocked = await repository.getDocument('qt');
+        expect(unlocked.lockedAt, isNull);
+        // Only the lock is cleared; updatedAt keeps the value from locking.
+        expect(unlocked, lockedCopyOf(quotation).copyWith(lockedAt: null));
+        expect(await isListedAsLocked(quotation), isFalse);
+        final edited = unlocked.copyWith(notes: 'editable again');
+        await repository.saveDocument(edited);
+        expect(await repository.getDocument('qt'), edited);
+      });
+
+      test('deleting one of two DOs keeps the SO locked', () async {
+        final salesOrder = documentWith(
+          id: 'so',
+          number: 'SO-2026-0001',
+          type: DocumentType.salesOrder,
+        );
+        await repository.saveDocument(salesOrder);
+        final lockedSalesOrder = lockedCopyOf(salesOrder);
+        await repository.saveUpgrade(
+          lockedSource: lockedSalesOrder,
+          createdDocument: derivedFrom(
+            salesOrder,
+            id: 'do1',
+            type: DocumentType.deliveryOrder,
+            number: 'DO-2026-0001',
+          ),
+        );
+        await repository.saveUpgrade(
+          lockedSource: lockedSalesOrder,
+          createdDocument: derivedFrom(
+            salesOrder,
+            id: 'do2',
+            type: DocumentType.deliveryOrder,
+            number: 'DO-2026-0002',
+          ),
+        );
+
+        await repository.deleteDocument('do1');
+
+        expect(await repository.getDocument('so'), lockedSalesOrder);
+        expect(await isListedAsLocked(salesOrder), isTrue);
+
+        await repository.deleteDocument('do2');
+
+        expect((await repository.getDocument('so')).lockedAt, isNull);
+        expect(await isListedAsLocked(salesOrder), isFalse);
+      });
+
+      test('deleting a locked document throws', () async {
+        final locked = documentWith(id: 'qt').copyWith(lockedAt: lockTime);
+        await repository.saveDocument(locked);
+
+        await expectLater(
+          repository.deleteDocument('qt'),
+          throwsA(isA<DocumentLockedException>()),
+        );
+        expect(await repository.getDocument('qt'), locked);
+      });
+
+      test('deleting a standalone draft removes only that document', () async {
+        await repository.saveDocument(documentWith(id: 'a'));
+        await repository.saveDocument(
+          documentWith(id: 'b', number: 'QT-2026-0002'),
+        );
+
+        await repository.deleteDocument('a');
+
+        expect(
+          await listedIds(
+            const DocumentListQuery(documentType: DocumentType.quotation),
+          ),
+          ['b'],
+        );
+      });
+
+      test('deleting an unknown id throws DocumentNotFoundException', () async {
+        await expectLater(
+          repository.deleteDocument('missing'),
+          throwsA(isA<DocumentNotFoundException>()),
+        );
+      });
+    });
   });
 }

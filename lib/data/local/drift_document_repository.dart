@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:pacim_invoicer/data/local/pacim_database.dart';
@@ -158,9 +158,10 @@ class DriftDocumentRepository implements DocumentRepository {
   }
 
   @override
-  Future<void> saveDocument(BusinessDocument document) async {
-    try {
-      await _database.transaction(() async {
+  Future<void> saveDocument(BusinessDocument document) {
+    final row = _rowFromDocument(document);
+    return _wrapStorageFailures(
+      () => _database.transaction(() async {
         final stored = await _selectDocumentRow(document.documentId)
             .getSingleOrNull();
         if (stored != null && stored.lockedAt != null) {
@@ -168,26 +169,126 @@ class DriftDocumentRepository implements DocumentRepository {
         }
         await _database
             .into(_database.documentRows)
-            .insertOnConflictUpdate(_rowFromDocument(document));
-      });
-    } on DocumentLockedException {
-      rethrow;
-    } catch (error) {
-      throw StorageWriteException(error);
-    }
+            .insertOnConflictUpdate(row);
+      }),
+    );
   }
 
+  /// The stored source may differ from [lockedSource] only in `lockedAt` and
+  /// `updatedAt`; anything else means the caller holds a stale or edited
+  /// copy, which is refused as a write to a locked document. A source that is
+  /// already locked keeps its original lock and is not rewritten. Any existing
+  /// row with the created document's id fails the whole transaction.
   @override
   Future<void> saveUpgrade({
     required BusinessDocument lockedSource,
     required BusinessDocument createdDocument,
   }) {
-    throw UnimplementedError('saveUpgrade is implemented in Task 11.');
+    if (lockedSource.lockedAt == null) {
+      throw ArgumentError.value(
+        lockedSource.documentId,
+        'lockedSource',
+        'must have lockedAt set',
+      );
+    }
+    if (createdDocument.sourceDocumentId != lockedSource.documentId) {
+      throw ArgumentError.value(
+        createdDocument.sourceDocumentId,
+        'createdDocument.sourceDocumentId',
+        'must be ${lockedSource.documentId}',
+      );
+    }
+    final sourceRow = _rowFromDocument(lockedSource);
+    final createdRow = _rowFromDocument(createdDocument);
+    return _wrapStorageFailures(
+      () => _database.transaction(() async {
+        final storedSourceRow = await _selectDocumentRow(
+          lockedSource.documentId,
+        ).getSingleOrNull();
+        if (storedSourceRow == null) {
+          throw DocumentNotFoundException(lockedSource.documentId);
+        }
+        final storedSource = _documentFromRow(storedSourceRow);
+        final incomingWithStoredLock = lockedSource.copyWith(
+          lockedAt: storedSource.lockedAt,
+          updatedAt: storedSource.updatedAt,
+        );
+        if (incomingWithStoredLock != storedSource) {
+          throw DocumentLockedException(lockedSource.documentId);
+        }
+
+        final existingCreatedRow = await _selectDocumentRow(
+          createdDocument.documentId,
+        ).getSingleOrNull();
+        if (existingCreatedRow?.lockedAt != null) {
+          throw DocumentLockedException(createdDocument.documentId);
+        }
+
+        if (storedSource.lockedAt == null) {
+          await _database.update(_database.documentRows).replace(sourceRow);
+        }
+        // A plain insert, so an existing unlocked row with this id fails the
+        // transaction and rolls back the source lock above.
+        await _database
+            .into(_database.documentRows)
+            .insert(createdRow, mode: InsertMode.insert);
+      }),
+    );
   }
 
+  /// Unlocks the source when no other document was created from it. Only the
+  /// lock is cleared; `updatedAt` is left as stored.
   @override
   Future<void> deleteDocument(String documentId) {
-    throw UnimplementedError('deleteDocument is implemented in Task 11.');
+    return _wrapStorageFailures(
+      () => _database.transaction(() async {
+        final storedRow = await _selectDocumentRow(documentId)
+            .getSingleOrNull();
+        if (storedRow == null) throw DocumentNotFoundException(documentId);
+        if (storedRow.lockedAt != null) {
+          throw DocumentLockedException(documentId);
+        }
+        await (_database.delete(
+          _database.documentRows,
+        )..where((row) => row.documentId.equals(documentId))).go();
+
+        final sourceDocumentId = storedRow.sourceDocumentId;
+        if (sourceDocumentId == null) return;
+        final remainingDerived =
+            await (_database.select(_database.documentRows)
+                  ..where(
+                    (row) => row.sourceDocumentId.equals(sourceDocumentId),
+                  )
+                  ..limit(1))
+                .get();
+        if (remainingDerived.isNotEmpty) return;
+
+        final sourceRow = await _selectDocumentRow(sourceDocumentId)
+            .getSingleOrNull();
+        if (sourceRow == null || sourceRow.lockedAt == null) return;
+        // The payload is the source of truth, so it is rewritten along with
+        // the lockedAt column.
+        final unlockedSource = _documentFromRow(sourceRow)
+            .copyWith(lockedAt: null);
+        await _database
+            .update(_database.documentRows)
+            .replace(_rowFromDocument(unlockedSource));
+      }),
+    );
+  }
+
+  /// Wraps storage failures in [StorageWriteException], keeping the original
+  /// stack trace. Domain exceptions pass through unchanged.
+  Future<void> _wrapStorageFailures(Future<void> Function() write) async {
+    try {
+      await write();
+    } on DocumentLockedException {
+      rethrow;
+    } on DocumentNotFoundException {
+      rethrow;
+    } catch (error, stackTrace) {
+      Error.throwWithStackTrace(StorageWriteException(error), stackTrace);
+    }
   }
 
   DocumentRowsCompanion _rowFromDocument(BusinessDocument document) {
