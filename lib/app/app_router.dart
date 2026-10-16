@@ -5,7 +5,7 @@ import '../domain/models/document_type.dart';
 import 'shell/app_shell.dart';
 import '../features/settings/settings_page.dart';
 import '../features/document_list/document_list_page.dart';
-import 'shell/placeholder_pages.dart';
+import '../features/document_editor/document_editor_page.dart';
 
 const _defaultLocation = '/quotations';
 
