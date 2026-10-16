@@ -56,8 +56,12 @@ String? _normalizeDecimalText(
   return _plainDecimalPattern.hasMatch(text) ? text : null;
 }
 
+/// Integers are exact on web up to 15 digits.
+const int _maxExactDigits = 15;
+
 /// Scales a plain decimal string by 10^[decimalPlaces], rounding half away
-/// from zero using digit arithmetic (never `double`).
+/// from zero using digit arithmetic (never `double`). Returns `null` when the
+/// result would exceed 15 digits, and never returns negative zero.
 int? _scaleDecimalHalfUp(String plainDecimal, int decimalPlaces) {
   final isNegative = plainDecimal.startsWith('-');
   final unsigned = isNegative ? plainDecimal.substring(1) : plainDecimal;
@@ -75,5 +79,7 @@ int? _scaleDecimalHalfUp(String plainDecimal, int decimalPlaces) {
   final scaled = int.tryParse('$wholeDigits$keptFraction');
   if (scaled == null) return null;
   final rounded = shouldRoundUp ? scaled + 1 : scaled;
+  if (rounded.toString().length > _maxExactDigits) return null;
+  if (rounded == 0) return 0;
   return isNegative ? -rounded : rounded;
 }

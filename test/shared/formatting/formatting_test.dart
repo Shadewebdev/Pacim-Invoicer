@@ -67,6 +67,38 @@ void main() {
     });
   });
 
+  group('quantity with a comma-decimal format', () {
+    test('formatQuantity uses the format decimal separator', () {
+      expect(formatQuantity(2500, format: eur), '2,5');
+      expect(parseQuantityInput('2,5', eur), 2500);
+    });
+    test('negative quantity', () {
+      expect(parseQuantityInput('-2.5', myr), -2500);
+      expect(formatQuantity(-2500), '-2.5');
+    });
+  });
+
+  group('parser edge cases', () {
+    test('16-digit money input is rejected as inexact', () {
+      expect(parseMoneyInput('1234567890123456', myr), isNull);
+    });
+    test('15 significant digits after scaling is accepted', () {
+      expect(parseMoneyInput('1234567890123.45', myr), 123456789012345);
+    });
+    test('tiny negative money rounds to plain zero', () {
+      final parsed = parseMoneyInput('-0.004', myr);
+      expect(parsed, 0);
+      expect(parsed!.isNegative, isFalse);
+      expect(1 / parsed, double.infinity);
+    });
+    test('negative money', () {
+      expect(parseMoneyInput('-1.50', myr), -150);
+    });
+    test('negative percent', () {
+      expect(parsePercentInput('-8.5%'), -850);
+    });
+  });
+
   test('parsePercentInput', () {
     expect(parsePercentInput('8.5%'), 850);
     expect(parsePercentInput('8'), 800);
