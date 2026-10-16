@@ -60,6 +60,10 @@ class DocumentFactory {
       lockedAt: null,
       schemaVersion: BusinessDocument.currentSchemaVersion,
       issueDate: now,
+      validUntilDate: _validityFrom(source, now),
+      deliveryDate: source.documentType == DocumentType.deliveryOrder
+          ? now
+          : source.deliveryDate,
       lineItems: [
         for (final line in source.lineItems)
           line.copyWith(
@@ -97,6 +101,24 @@ class DocumentFactory {
         termsAndConditions: settings.defaultTermsByType[type] ?? '',
       ),
     };
+  }
+
+  /// Keeps the source's validity span (in whole calendar days) counted from
+  /// [now]; null when the source has no complete span.
+  static DateTime? _validityFrom(BusinessDocument source, DateTime now) {
+    final validUntil = source.validUntilDate;
+    if (validUntil == null) return null;
+    final spanInDays =
+        DateTime.utc(validUntil.year, validUntil.month, validUntil.day)
+            .difference(
+              DateTime.utc(
+                source.issueDate.year,
+                source.issueDate.month,
+                source.issueDate.day,
+              ),
+            )
+            .inDays;
+    return _addDays(now, spanInDays);
   }
 
   /// Adds calendar days, keeping the time of day.

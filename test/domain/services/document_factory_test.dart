@@ -119,6 +119,29 @@ void main() {
     }
   });
 
+  test('duplicating an old quotation keeps its validity span from today', () {
+    final source = buildTestDocument().copyWith(
+      issueDate: DateTime.utc(2026, 1, 1),
+      validUntilDate: DateTime.utc(2026, 1, 15),
+    );
+    final copy = buildFactory().duplicateAsDraft(
+      source: source,
+      documentNumber: 'QT-2026-0009',
+      now: DateTime.utc(2026, 10, 17),
+    );
+    expect(copy.validUntilDate, DateTime.utc(2026, 10, 31));
+  });
+
+  test('duplicating a delivery order sets delivery date to now', () {
+    final source = buildTestDocument(type: DocumentType.deliveryOrder);
+    final copy = buildFactory().duplicateAsDraft(
+      source: source,
+      documentNumber: 'DO-2026-0009',
+      now: now,
+    );
+    expect(copy.deliveryDate, now);
+  });
+
   test('resetSectionToDefaults(pricing) replaces only pricingTerms', () {
     final document = buildTestDocument();
     final reset = buildFactory().resetSectionToDefaults(

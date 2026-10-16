@@ -101,7 +101,9 @@ class DocumentUpgradeService {
       updatedAt: now,
     );
     return UpgradeResult(
-      lockedSource: source.copyWith(lockedAt: source.lockedAt ?? now),
+      lockedSource: source.lockedAt == null
+          ? source.copyWith(lockedAt: now, updatedAt: now)
+          : source,
       createdDocument: createdDocument,
     );
   }

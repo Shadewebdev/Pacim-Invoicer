@@ -57,6 +57,7 @@ void main() {
       expect(line.description, original.description);
     }
     expect(result.lockedSource.lockedAt, now);
+    expect(result.lockedSource.updatedAt, now);
     expect(result.lockedSource.documentId, quotation.documentId);
   });
 
@@ -139,6 +140,7 @@ void main() {
         now: now,
       );
       expect(result.lockedSource.lockedAt, originalLockedAt);
+      expect(result.lockedSource.updatedAt, locked.updatedAt);
     });
 
     test('fully delivered sales order is blocked', () {
