@@ -1,7 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
+import '../../app/shell/navigation_leave_guard.dart';
 import '../../app/theme/app_color_tokens.dart';
 import '../../app/theme/app_typography.dart';
 import '../../domain/exceptions/document_exceptions.dart';
@@ -19,7 +21,8 @@ import 'unsaved_changes_guard.dart';
 const double _commandBarHeight = 44;
 const double _breadcrumbHeight = 40;
 
-/// Narrower editors open the properties pane as a bottom sheet instead.
+/// The A4 page needs about 794 px and the pane 300 px, so the pane only fits
+/// beside the page from 1000 px; narrower editors open it as a bottom sheet.
 const double _propertiesPaneMinimumWindowWidth = 1000;
 const double _propertiesSheetMaximumHeightFraction = 0.85;
 
@@ -142,8 +145,9 @@ class _DocumentEditorPageState extends ConsumerState<DocumentEditorPage> {
       createdFrom: createdFrom,
       // Task 20 wires "Duplicate as new draft".
       onDuplicateAsNewDraft: null,
-      onOpenCreatedDocument: (summary) =>
-          GoRouter.of(context).go('/documents/${summary.documentId}'),
+      onOpenCreatedDocument: (summary) => unawaited(
+        goAfterLeaveGuard(context, ref, '/documents/${summary.documentId}'),
+      ),
     );
   }
 
@@ -307,13 +311,13 @@ class _SaveStatusLabel extends StatelessWidget {
   }
 }
 
-class _MissingDocument extends StatelessWidget {
+class _MissingDocument extends ConsumerWidget {
   const _MissingDocument({required this.documentType});
 
   final DocumentType documentType;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -324,8 +328,9 @@ class _MissingDocument extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           OutlinedButton(
-            onPressed: () =>
-                GoRouter.of(context).go('/${documentType.routeSegment}'),
+            onPressed: () => unawaited(
+              goAfterLeaveGuard(context, ref, '/${documentType.routeSegment}'),
+            ),
             child: Text(
               'Back to ${documentType.pluralDisplayName.toLowerCase()}',
             ),

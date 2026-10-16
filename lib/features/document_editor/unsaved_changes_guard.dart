@@ -5,65 +5,100 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../app/shell/navigation_leave_guard.dart';
 import 'document_editor_controller.dart';
 import 'document_editor_state.dart';
 
-/// Lets the guard take over the window's close button. The app uses the
-/// window_manager implementation on Windows; tests use a fake.
+/// Lets editors take over the window's close button. The app uses the
+/// window_manager implementation on Windows; tests use a fake or a
+/// [StackedWindowCloseInterceptor] with recording callbacks.
 abstract interface class WindowCloseInterceptor {
   /// Stops the window closing by itself and calls [onCloseRequested] instead.
   Future<void> startIntercepting(Future<void> Function() onCloseRequested);
 
-  Future<void> stopIntercepting();
+  /// Withdraws a handler given to [startIntercepting].
+  Future<void> stopIntercepting(Future<void> Function() onCloseRequested);
 
   /// Closes the window for good, after the person agreed to leave.
   Future<void> closeWindow();
 }
 
-class _WindowManagerCloseInterceptor
-    with WindowListener
-    implements WindowCloseInterceptor {
-  Future<void> Function()? _onCloseRequested;
+/// Keeps a stack of handlers so one editor replacing another cannot switch
+/// close prevention off: a new editor registers before the old one leaves.
+/// The newest handler gets close requests, and prevention ends only when the
+/// last handler is withdrawn.
+class StackedWindowCloseInterceptor implements WindowCloseInterceptor {
+  StackedWindowCloseInterceptor({
+    required this.setPreventClose,
+    required this.destroyWindow,
+  });
+
+  final Future<void> Function({required bool isPrevented}) setPreventClose;
+  final Future<void> Function() destroyWindow;
+  final List<Future<void> Function()> _handlers = [];
 
   @override
   Future<void> startIntercepting(
     Future<void> Function() onCloseRequested,
   ) async {
-    _onCloseRequested = onCloseRequested;
-    windowManager.addListener(this);
-    await windowManager.setPreventClose(true);
+    _handlers.add(onCloseRequested);
+    if (_handlers.length == 1) await setPreventClose(isPrevented: true);
   }
 
   @override
-  Future<void> stopIntercepting() async {
-    _onCloseRequested = null;
-    windowManager.removeListener(this);
-    await windowManager.setPreventClose(false);
+  Future<void> stopIntercepting(
+    Future<void> Function() onCloseRequested,
+  ) async {
+    if (!_handlers.remove(onCloseRequested)) return;
+    if (_handlers.isEmpty) await setPreventClose(isPrevented: false);
   }
 
   @override
-  Future<void> closeWindow() => windowManager.destroy();
+  Future<void> closeWindow() => destroyWindow();
+
+  /// Passes a close request from the window to the newest handler.
+  Future<void> handleCloseRequested() async {
+    if (_handlers.isEmpty) return;
+    await _handlers.last();
+  }
+}
+
+class _WindowManagerCloseListener with WindowListener {
+  _WindowManagerCloseListener(this._interceptor);
+
+  final StackedWindowCloseInterceptor _interceptor;
 
   @override
-  void onWindowClose() {
-    final onCloseRequested = _onCloseRequested;
-    if (onCloseRequested != null) unawaited(onCloseRequested());
-  }
+  void onWindowClose() => unawaited(_interceptor.handleCloseRequested());
+}
+
+StackedWindowCloseInterceptor _createWindowManagerInterceptor() {
+  final interceptor = StackedWindowCloseInterceptor(
+    setPreventClose: ({required isPrevented}) =>
+        windowManager.setPreventClose(isPrevented),
+    destroyWindow: windowManager.destroy,
+  );
+  windowManager.addListener(_WindowManagerCloseListener(interceptor));
+  return interceptor;
 }
 
 /// Null where the window cannot be intercepted (web and mobile).
 final windowCloseInterceptorProvider = Provider<WindowCloseInterceptor?>(
   (ref) => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows
-      ? _WindowManagerCloseInterceptor()
+      ? _createWindowManagerInterceptor()
       : null,
 );
 
-/// Wraps the editor so that leaving it (back, or closing the window) never
-/// silently loses edits.
+/// The most save attempts made for one leave request before staying put.
+const int _maximumSaveAttempts = 3;
+
+/// Wraps the editor so that leaving it (back, closing the window or choosing
+/// another destination) never silently loses edits.
 ///
 /// Pending edits are saved first. If saving fails, the person chooses between
-/// retrying, leaving anyway and staying. The app hiding or pausing also saves,
-/// because a browser tab or backgrounded app may never come back.
+/// retrying, leaving anyway (which discards the edits) and staying. The app
+/// hiding or pausing also saves, because a browser tab or backgrounded app may
+/// never come back.
 class UnsavedChangesGuard extends ConsumerStatefulWidget {
   const UnsavedChangesGuard({
     required this.documentId,
@@ -81,7 +116,11 @@ class UnsavedChangesGuard extends ConsumerStatefulWidget {
 
 class _UnsavedChangesGuardState extends ConsumerState<UnsavedChangesGuard> {
   late final AppLifecycleListener _lifecycleListener;
+  late final NavigationLeaveGuardRegistry _leaveGuardRegistry;
   WindowCloseInterceptor? _windowCloseInterceptor;
+
+  /// One tear-off, so withdrawing it later matches what was registered.
+  late final Future<void> Function() _closeHandler = _onCloseRequested;
 
   /// True once the person agreed to leave, so the next pop goes through.
   bool _mayPop = false;
@@ -93,14 +132,31 @@ class _UnsavedChangesGuardState extends ConsumerState<UnsavedChangesGuard> {
       onHide: _flushEdits,
       onPause: _flushEdits,
     );
+    _leaveGuardRegistry = ref.read(navigationLeaveGuardProvider)
+      ..register(this, _confirmLeaving);
     _windowCloseInterceptor = ref.read(windowCloseInterceptorProvider);
-    unawaited(_windowCloseInterceptor?.startIntercepting(_onCloseRequested));
+    unawaited(_windowCloseInterceptor?.startIntercepting(_closeHandler));
+  }
+
+  @override
+  void didUpdateWidget(UnsavedChangesGuard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.documentId == widget.documentId) return;
+    // Registrations call back into this state, which now reads the new id.
+    // The document left behind keeps its edits, so save them.
+    _mayPop = false;
+    unawaited(
+      ref
+          .read(documentEditorControllerProvider(oldWidget.documentId).notifier)
+          .saveNow(),
+    );
   }
 
   @override
   void dispose() {
     _lifecycleListener.dispose();
-    unawaited(_windowCloseInterceptor?.stopIntercepting());
+    _leaveGuardRegistry.unregister(this);
+    unawaited(_windowCloseInterceptor?.stopIntercepting(_closeHandler));
     super.dispose();
   }
 
@@ -127,9 +183,12 @@ class _UnsavedChangesGuardState extends ConsumerState<UnsavedChangesGuard> {
   /// is unsaved, or the person chose to leave without saving.
   Future<bool> _confirmLeaving() async {
     await _commitFocusedField();
+    var saveAttempts = 0;
     while (true) {
       final status = _saveStatus;
       if (status == SaveStatus.pending || status == SaveStatus.saving) {
+        // A save that keeps leaving edits unsaved is not worth waiting for.
+        if (saveAttempts++ >= _maximumSaveAttempts) return false;
         await _controller.saveNow();
         continue;
       }
@@ -143,6 +202,7 @@ class _UnsavedChangesGuardState extends ConsumerState<UnsavedChangesGuard> {
         case _LeaveChoice.retrySave:
           await _controller.retrySave();
         case _LeaveChoice.leaveWithoutSaving:
+          _controller.discardPendingChanges();
           return true;
         case _LeaveChoice.cancel || null:
           return false;

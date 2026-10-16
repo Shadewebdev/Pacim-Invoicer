@@ -106,7 +106,10 @@ class HeaderFooterPropertiesSection extends ConsumerWidget {
             final latest = _latestDocument(ref) ?? document;
             editCompany(latest.companyDetails.copyWith(logoAssetId: assetId));
           },
-          onRemove: () => editCompany(company.copyWith(logoAssetId: null)),
+          onRemove: () {
+            final latest = _latestDocument(ref) ?? document;
+            editCompany(latest.companyDetails.copyWith(logoAssetId: null));
+          },
         ),
         SettingsToggleRow(
           label: 'Show logo',

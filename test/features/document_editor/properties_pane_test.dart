@@ -6,6 +6,7 @@ import 'package:pacim_invoicer/data/repository_providers.dart';
 import 'package:pacim_invoicer/domain/models/business_document.dart';
 import 'package:pacim_invoicer/domain/models/currency_format.dart';
 import 'package:pacim_invoicer/domain/models/document_settings.dart';
+import 'package:pacim_invoicer/domain/models/document_type.dart';
 import 'package:pacim_invoicer/domain/models/pricing_terms.dart';
 import 'package:pacim_invoicer/features/document_editor/document_editor_controller.dart';
 import 'package:pacim_invoicer/features/document_editor/document_editor_page.dart';
@@ -118,6 +119,13 @@ void main() {
     // Pricing was not part of this reset.
     expect(reset.pricingTerms, document.pricingTerms);
     await _saveEdits(document.documentId);
+  });
+
+  testWidgets('delivery orders have no pricing section', (tester) async {
+    await _pump(tester, buildTestDocument(type: DocumentType.deliveryOrder));
+    expect(find.text('Pricing & currency'), findsNothing);
+    expect(find.text('Header & footer'), findsOneWidget);
+    expect(find.text('Reset to defaults'), findsNWidgets(2));
   });
 
   testWidgets('Document section has no reset button', (tester) async {

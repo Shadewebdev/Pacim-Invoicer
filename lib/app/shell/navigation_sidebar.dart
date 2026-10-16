@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../domain/models/document_type.dart';
 import '../theme/app_color_tokens.dart';
+import 'navigation_leave_guard.dart';
 
 class _Destination {
   const _Destination({
@@ -37,7 +39,7 @@ const _settingsDestination = _Destination(
 
 /// Navigation between document lists and settings. Full width shows labels;
 /// [isRail] shows icons only.
-class NavigationSidebar extends StatelessWidget {
+class NavigationSidebar extends ConsumerWidget {
   const NavigationSidebar({
     required this.isRail,
     this.onDestinationSelected,
@@ -53,16 +55,21 @@ class NavigationSidebar extends StatelessWidget {
   final VoidCallback? onDestinationSelected;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final tokens = Theme.of(context).extension<AppColorTokens>()!;
     final currentPath = GoRouterState.of(context).uri.path;
     Widget item(_Destination destination) => _SidebarItem(
       destination: destination,
       isRail: isRail,
       isSelected: currentPath == destination.location,
-      onTap: () {
-        context.go(destination.location);
-        onDestinationSelected?.call();
+      onTap: () async {
+        // A screen with unsaved work may ask before it is left.
+        final didNavigate = await goAfterLeaveGuard(
+          context,
+          ref,
+          destination.location,
+        );
+        if (didNavigate) onDestinationSelected?.call();
       },
     );
     return Container(

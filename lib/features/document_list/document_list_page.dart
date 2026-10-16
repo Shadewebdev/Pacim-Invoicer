@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
+import '../../app/shell/navigation_leave_guard.dart';
 import '../../app/shell/status_bar_count_provider.dart';
 import '../../app/theme/app_color_tokens.dart';
 import '../../app/theme/app_typography.dart';
@@ -127,7 +127,7 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
 
   void _openDocument(String documentId) {
     if (!mounted) return;
-    context.go('/documents/$documentId');
+    unawaited(goAfterLeaveGuard(context, ref, '/documents/$documentId'));
   }
 
   Future<void> _createDocument() async {

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pacim_invoicer/app/app_router.dart';
+import 'package:pacim_invoicer/app/pacim_invoicer_app.dart';
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
 import 'package:pacim_invoicer/features/document_editor/document_editor_controller.dart';
@@ -28,8 +30,10 @@ class _FakeWindowCloseInterceptor implements WindowCloseInterceptor {
   }
 
   @override
-  Future<void> stopIntercepting() async {
-    onCloseRequested = null;
+  Future<void> stopIntercepting(
+    Future<void> Function() onCloseRequested,
+  ) async {
+    this.onCloseRequested = null;
     isIntercepting = false;
   }
 
@@ -171,7 +175,7 @@ void main() {
     expect(find.text('editor body'), findsNothing);
   });
 
-  testWidgets('Leave without saving leaves with the failed status', (
+  testWidgets('Leave without saving discards the edits for good', (
     tester,
   ) async {
     await _pumpGuardedEditor(tester);
@@ -180,8 +184,14 @@ void main() {
 
     await tester.tap(find.text('Leave without saving'));
     await tester.pumpAndSettle();
-
     expect(find.text('editor body'), findsNothing);
+
+    // Disposing the controller must not save the discarded edits either.
+    _container.dispose();
+    await tester.pump();
+    await tester.pump();
+    expect(_documents.storedDocuments.single.notes, 'Thank you.');
+    expect(_documents.saveCount, 0);
   });
 
   testWidgets('a retry that fails again asks again', (tester) async {
@@ -246,5 +256,112 @@ void main() {
 
     expect(_documents.saveCount, 1);
     expect(_documents.storedDocuments.single.notes, 'edited');
+  });
+
+  testWidgets('a second editor taking over keeps close prevention on', (
+    tester,
+  ) async {
+    final preventCloseCalls = <bool>[];
+    var isWindowDestroyed = false;
+    final documents = FakeDocumentRepository()
+      ..seed(buildTestDocument())
+      ..seed(buildTestDocument(documentId: 'doc-2'));
+    final interceptor = StackedWindowCloseInterceptor(
+      setPreventClose: ({required isPrevented}) async =>
+          preventCloseCalls.add(isPrevented),
+      destroyWindow: () async => isWindowDestroyed = true,
+    );
+    final container = ProviderContainer(
+      retry: (_, _) => null,
+      overrides: [
+        documentRepositoryProvider.overrideWithValue(documents),
+        settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
+        clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
+        windowCloseInterceptorProvider.overrideWithValue(interceptor),
+      ],
+    );
+    addTearDown(container.dispose);
+    final shownId = ValueNotifier('doc-1');
+    addTearDown(shownId.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: ValueListenableBuilder<String>(
+            valueListenable: shownId,
+            builder: (context, id, _) => UnsavedChangesGuard(
+              key: ValueKey(id),
+              documentId: id,
+              child: Text('editor $id'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(preventCloseCalls, [true]);
+
+    shownId.value = 'doc-2';
+    await tester.pumpAndSettle();
+
+    expect(find.text('editor doc-2'), findsOneWidget);
+    // The old editor leaving must not have switched prevention off.
+    expect(preventCloseCalls, [true]);
+
+    // Close requests reach the newest editor, which is clean and so closes.
+    unawaited(interceptor.handleCloseRequested());
+    await tester.pumpAndSettle();
+    expect(isWindowDestroyed, isTrue);
+  });
+
+  testWidgets('choosing a sidebar destination with a failed save asks first', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final documents = FakeDocumentRepository()..seed(buildTestDocument());
+    final container = ProviderContainer(
+      retry: (_, _) => null,
+      overrides: [
+        documentRepositoryProvider.overrideWithValue(documents),
+        settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
+        clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const PacimInvoicerApp(),
+      ),
+    );
+    final router = container.read(appRouterProvider)..go('/documents/doc-1');
+    await tester.pumpAndSettle();
+    String path() => router.routeInformationProvider.value.uri.path;
+    expect(path(), '/documents/doc-1');
+
+    documents.failNextSave = true;
+    container
+        .read(documentEditorControllerProvider('doc-1').notifier)
+        .updateNotes('edited');
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+
+    await tester.tap(find.text('Sales orders'));
+    await tester.pumpAndSettle();
+    expect(find.text('Save changes before leaving?'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(path(), '/documents/doc-1');
+
+    await tester.tap(find.text('Sales orders'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Retry save'));
+    await tester.pumpAndSettle();
+    expect(path(), '/sales-orders');
+    expect(documents.storedDocuments.single.notes, 'edited');
   });
 }

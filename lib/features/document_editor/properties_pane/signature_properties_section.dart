@@ -77,7 +77,17 @@ class SignaturePropertiesSection extends ConsumerWidget {
               ),
             );
           },
-          onRemove: () => edit(block.copyWith(signatureAssetId: null)),
+          onRemove: () {
+            final latest = ref
+                .read(documentEditorControllerProvider(document.documentId))
+                .value
+                ?.document;
+            edit(
+              (latest ?? document).signatureBlock.copyWith(
+                signatureAssetId: null,
+              ),
+            );
+          },
         ),
       ],
     );

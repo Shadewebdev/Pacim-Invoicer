@@ -41,6 +41,9 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
   /// Counts edits, so a save can tell whether the user typed while it ran.
   int _editCount = 0;
 
+  /// The document as last loaded from or written to storage.
+  BusinessDocument? _lastSavedDocument;
+
   @override
   Future<DocumentEditorState> build() async {
     _repository = ref.read(documentRepositoryProvider);
@@ -49,6 +52,7 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
 
     final document = await _repository.getDocument(documentId);
     final loaded = await _loadDeliveryContext(document);
+    _lastSavedDocument = loaded.document;
     _storedDocumentSubscription = _repository
         .watchDocument(documentId)
         .listen(_onStoredDocument, onError: (Object _) {});
@@ -208,10 +212,28 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
   /// Saves again after a failed save.
   Future<void> retrySave() => saveNow();
 
+  /// Drops every edit made since the last save and returns to the last saved
+  /// document, so leaving the editor afterwards saves nothing.
+  void discardPendingChanges() {
+    _autosaveTimer?.cancel();
+    final current = state.value;
+    final saved = _lastSavedDocument;
+    if (current == null || saved == null) return;
+    _editCount++;
+    _publish(
+      _revalidated(
+        current.copyWith(document: saved, saveStatus: SaveStatus.saved),
+      ),
+    );
+  }
+
   // Internals.
 
   void _publish(DocumentEditorState editorState) {
     _latestState = editorState;
+    if (editorState.saveStatus == SaveStatus.saved) {
+      _lastSavedDocument = editorState.document;
+    }
     state = AsyncData(editorState);
   }
 

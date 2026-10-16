@@ -94,14 +94,16 @@ class _PropertiesPaneState extends ConsumerState<PropertiesPane> {
                 ]),
               ),
             ),
-            PricingPropertiesSection(
-              document: document,
-              controller: controller,
-              isLocked: isLocked,
-              resetGeneration: _resetGeneration,
-              onReset: () =>
-                  unawaited(_resetSections(const [DocumentSection.pricing])),
-            ),
+            // Delivery orders carry no prices (spec 3.7).
+            if (document.documentType.showsPricing)
+              PricingPropertiesSection(
+                document: document,
+                controller: controller,
+                isLocked: isLocked,
+                resetGeneration: _resetGeneration,
+                onReset: () =>
+                    unawaited(_resetSections(const [DocumentSection.pricing])),
+              ),
             SignaturePropertiesSection(
               document: document,
               controller: controller,
