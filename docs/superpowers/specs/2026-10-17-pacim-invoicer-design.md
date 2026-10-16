@@ -103,7 +103,8 @@ old document always reproduces exactly as it was.
 ### 3.8 Currency
 `CurrencyFormat`: `currencyCode` (e.g. `MYR`), `symbol` (e.g. `RM`), `decimalPlaces` (0–3),
 `symbolPosition` (before/after), `thousandsSeparator` and `decimalSeparator`. The default comes from
-Settings and is copied into each document. Each document can edit its own in the Pricing & currency
+Settings and is copied into each document. The factory default is MYR (`RM`, 2 decimal places, symbol
+before, `RM1,234.56`). Each document can edit its own in the Pricing & currency
 panel. Changing decimal places on a document re-expresses existing prices at the new precision, with
 rounding.
 

@@ -302,7 +302,8 @@ test('theme exposes extensions and compact density', () {
     - fields `currencyCode`, `symbol`, `decimalPlaces`, `symbolPosition`
       (`enum CurrencySymbolPosition { before, after }`), `thousandsSeparator` (default `','`) and
       `decimalSeparator` (default `'.'`);
-    - `static const defaultFormat`: USD, `$`, 2 places, before;
+    - `static const defaultFormat`: MYR, `RM`, 2 places, before, `,` thousands, `.` decimal
+      (renders `RM1,234.56`);
     - `int get minorUnitsPerMajor`, i.e. `10^decimalPlaces`.
   - **`PricingTerms`:** fields `currencyFormat`, `taxLabel` (default `'Tax'`),
     `taxRatePercentScaled` (default 0) and `isTaxEnabled` (default false).
@@ -380,22 +381,23 @@ test('theme exposes extensions and compact density', () {
 
 - [ ] **Step 1:** Write failing tests with these exact cases:
 ```dart
-const usd = CurrencyFormat.defaultFormat;
-final eur = usd.copyWith(currencyCode: 'EUR', symbol: '€', symbolPosition: CurrencySymbolPosition.after,
+const myr = CurrencyFormat.defaultFormat;
+final eur = myr.copyWith(currencyCode: 'EUR', symbol: '€', symbolPosition: CurrencySymbolPosition.after,
     thousandsSeparator: '.', decimalSeparator: ',');
-final jpy = usd.copyWith(currencyCode: 'JPY', symbol: '¥', decimalPlaces: 0);
-expect(formatMoney(123456, usd), r'$1,234.56');
-expect(formatMoney(-5, usd), r'-$0.05');
+final jpy = myr.copyWith(currencyCode: 'JPY', symbol: '¥', decimalPlaces: 0);
+expect(myr.currencyCode, 'MYR');
+expect(formatMoney(123456, myr), 'RM1,234.56');
+expect(formatMoney(-5, myr), '-RM0.05');
 expect(formatMoney(123456, eur), '1.234,56 €');
 expect(formatMoney(1234, jpy), '¥1,234');
-expect(parseMoneyInput('1,234.50', usd), 123450);
-expect(parseMoneyInput(' 12 ', usd), 1200);
+expect(parseMoneyInput('1,234.50', myr), 123450);
+expect(parseMoneyInput('RM 12 ', myr), 1200);
 expect(parseMoneyInput('1.234,50', eur), 123450);
-expect(parseMoneyInput('abc', usd), isNull);
-expect(parseMoneyInput('', usd), isNull);
-expect(parseMoneyInput('1.005', usd), 101);          // half-up to 2 places
-expect(parseQuantityInput('2.5', usd), 2500);
-expect(parseQuantityInput('0.0005', usd), 1);        // half-up to 3 places
+expect(parseMoneyInput('abc', myr), isNull);
+expect(parseMoneyInput('', myr), isNull);
+expect(parseMoneyInput('1.005', myr), 101);          // half-up to 2 places
+expect(parseQuantityInput('2.5', myr), 2500);
+expect(parseQuantityInput('0.0005', myr), 1);        // half-up to 3 places
 expect(formatQuantity(2500), '2.5');
 expect(formatQuantity(3000), '3');
 expect(parsePercentInput('8.5%'), 850);
