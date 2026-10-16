@@ -93,6 +93,45 @@ void main() {
     expect(commits, ['changed']);
   });
 
+  testWidgets('a field removed while edited commits without a provider error', (
+    tester,
+  ) async {
+    final committedProvider = NotifierProvider<_TextHolder, String>(
+      _TextHolder.new,
+    );
+    final isShownProvider = NotifierProvider<_FlagHolder, bool>(
+      _FlagHolder.new,
+    );
+    late WidgetRef capturedRef;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: Consumer(
+              builder: (context, ref, _) {
+                capturedRef = ref;
+                return ref.watch(isShownProvider)
+                    ? InlineTextField(
+                        value: 'start',
+                        onCommitted: (text) => ref
+                            .read(committedProvider.notifier)
+                            .replaceWith(text),
+                      )
+                    : const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(InlineTextField), 'typed');
+    capturedRef.read(isShownProvider.notifier).hide();
+    await tester.pump();
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(capturedRef.read(committedProvider), 'typed');
+  });
+
   testWidgets('a read-only field cannot be edited and shows no placeholder', (
     tester,
   ) async {
@@ -105,4 +144,18 @@ void main() {
     await tester.pump();
     expect(commits, isEmpty);
   });
+}
+
+class _TextHolder extends Notifier<String> {
+  @override
+  String build() => '';
+
+  void replaceWith(String text) => state = text;
+}
+
+class _FlagHolder extends Notifier<bool> {
+  @override
+  bool build() => true;
+
+  void hide() => state = false;
 }

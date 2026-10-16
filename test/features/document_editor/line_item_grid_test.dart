@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -104,6 +105,25 @@ Future<void> _pressWith(
   await tester.sendKeyEvent(key);
   await tester.sendKeyUpEvent(modifier);
   await tester.pumpAndSettle();
+}
+
+TestGesture? _hoverMouse;
+
+/// Moves a mouse pointer over [target], which reveals its row's controls.
+Future<void> _hoverOver(WidgetTester tester, Finder target) async {
+  var mouse = _hoverMouse;
+  if (mouse == null) {
+    mouse = _hoverMouse = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+    );
+    addTearDown(() async {
+      await mouse?.removePointer();
+      _hoverMouse = null;
+    });
+    await mouse.addPointer(location: Offset.zero);
+  }
+  await mouse.moveTo(tester.getCenter(target));
+  await tester.pump();
 }
 
 Future<void> _flushSaves() => _container
@@ -371,6 +391,21 @@ void main() {
       expect(cell.height, greaterThan(300));
     });
 
+    testWidgets('row controls cannot be hit or read while the row is idle', (
+      tester,
+    ) async {
+      await _pumpPage(tester, buildTestDocument());
+      expect(find.byTooltip('Row actions').hitTestable(), findsNothing);
+      expect(find.byIcon(Icons.drag_indicator).hitTestable(), findsNothing);
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(find.text('1').first));
+      await tester.pump();
+      expect(find.byTooltip('Row actions').hitTestable(), findsOneWidget);
+    });
+
     testWidgets('editable document shows add-item row and row menus', (
       tester,
     ) async {
@@ -426,6 +461,7 @@ void main() {
 
     testWidgets('row menu inserts above and deletes', (tester) async {
       await _pumpPage(tester, buildTestDocument());
+      await _hoverOver(tester, _cell('line-1', LineItemColumn.description));
       await tester.tap(find.byTooltip('Row actions').first);
       await tester.pumpAndSettle();
       expect(find.text('Duplicate row'), findsOneWidget);
@@ -434,6 +470,7 @@ void main() {
       expect(_lineIds, ['id-1', 'line-1', 'line-2']);
       expect(_hasFocus(tester, 'id-1', LineItemColumn.description), isTrue);
 
+      await _hoverOver(tester, _cell('line-2', LineItemColumn.description));
       await tester.tap(find.byTooltip('Row actions').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete row'));
@@ -445,6 +482,7 @@ void main() {
 
     testWidgets('dragging the handle reorders rows', (tester) async {
       await _pumpPage(tester, buildTestDocument());
+      await _hoverOver(tester, _cell('line-1', LineItemColumn.description));
       final handle = find.byIcon(Icons.drag_indicator).first;
       final gesture = await tester.startGesture(tester.getCenter(handle));
       for (var step = 0; step < 10; step++) {

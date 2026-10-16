@@ -106,6 +106,20 @@ void main() {
     expect(parsePercentInput('x'), isNull);
   });
 
+  test('parsePercentInput follows the currency format separators', () {
+    const commaDecimal = CurrencyFormat(
+      currencyCode: 'EUR',
+      symbol: 'EUR',
+      decimalPlaces: 2,
+      symbolPosition: CurrencySymbolPosition.after,
+      thousandsSeparator: '.',
+      decimalSeparator: ',',
+    );
+    expect(parsePercentInput('8,5', format: commaDecimal), 850);
+    expect(parsePercentInput('8,5%', format: commaDecimal), 850);
+    expect(parsePercentInput('12', format: commaDecimal), 1200);
+  });
+
   test('formatDocumentDate', () {
     expect(formatDocumentDate(DateTime(2026, 10, 17)), '17 Oct 2026');
   });

@@ -11,11 +11,17 @@ import 'document_editor_state.dart';
 import 'document_page/document_canvas.dart';
 import 'document_page/document_page_view.dart';
 import 'document_page/page_zoom_provider.dart';
+import 'created_from_document_provider.dart';
+import 'locked_document_banner.dart';
+import 'properties_pane/properties_pane.dart';
+import 'unsaved_changes_guard.dart';
 
 const double _commandBarHeight = 44;
 const double _breadcrumbHeight = 40;
-const double _propertiesPaneWidth = 300;
+
+/// Narrower editors open the properties pane as a bottom sheet instead.
 const double _propertiesPaneMinimumWindowWidth = 1000;
+const double _propertiesSheetMaximumHeightFraction = 0.85;
 
 /// The document editor: command bar, breadcrumb, A4 page canvas and the
 /// properties pane.
@@ -33,6 +39,8 @@ class _DocumentEditorPageState extends ConsumerState<DocumentEditorPage> {
 
   /// The type of the last document this page showed, used if it disappears.
   DocumentType? _lastKnownType;
+
+  bool _isPropertiesPaneOpen = true;
 
   void _fitWidth() {
     if (_canvasWidth <= 0) return;
@@ -63,44 +71,93 @@ class _DocumentEditorPageState extends ConsumerState<DocumentEditorPage> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return Column(
-      children: [
-        _CommandBar(
-          documentId: widget.documentId,
-          state: value,
-          onFitWidth: _fitWidth,
-        ),
-        // Task 19 fills this with the document chain breadcrumb.
-        const SizedBox(
-          key: ValueKey('breadcrumbSlot'),
-          height: _breadcrumbHeight,
-          width: double.infinity,
-        ),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final showsPropertiesPane =
-                  constraints.maxWidth >= _propertiesPaneMinimumWindowWidth;
-              return Row(
-                children: [
-                  Expanded(
-                    child: DocumentCanvas(
-                      documentId: widget.documentId,
-                      onViewportWidthChanged: (width) => _canvasWidth = width,
+    return UnsavedChangesGuard(
+      documentId: widget.documentId,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final fitsPaneBesidePage =
+              constraints.maxWidth >= _propertiesPaneMinimumWindowWidth;
+          final showsPropertiesPane =
+              fitsPaneBesidePage && _isPropertiesPaneOpen;
+          return Column(
+            children: [
+              _CommandBar(
+                documentId: widget.documentId,
+                state: value,
+                onFitWidth: _fitWidth,
+                propertiesButtonLabel: !fitsPaneBesidePage
+                    ? 'Properties'
+                    : _isPropertiesPaneOpen
+                    ? 'Hide properties'
+                    : 'Show properties',
+                onPropertiesPressed: fitsPaneBesidePage
+                    ? () => setState(
+                        () => _isPropertiesPaneOpen = !_isPropertiesPaneOpen,
+                      )
+                    : _openPropertiesSheet,
+              ),
+              if (value.isLocked) _buildLockedBanner(value),
+              // Task 20 fills this with the document chain breadcrumb.
+              const SizedBox(
+                key: ValueKey('breadcrumbSlot'),
+                height: _breadcrumbHeight,
+                width: double.infinity,
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: DocumentCanvas(
+                        documentId: widget.documentId,
+                        onViewportWidthChanged: (width) => _canvasWidth = width,
+                      ),
                     ),
-                  ),
-                  // Task 20 fills this with the properties pane.
-                  if (showsPropertiesPane)
-                    const SizedBox(
-                      key: ValueKey('propertiesPaneSlot'),
-                      width: _propertiesPaneWidth,
-                    ),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
+                    if (showsPropertiesPane)
+                      SizedBox(
+                        key: const ValueKey('propertiesPane'),
+                        width: propertiesPaneWidth,
+                        child: PropertiesPane(documentId: widget.documentId),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildLockedBanner(DocumentEditorState value) {
+    final createdFrom = ref
+        .watch(
+          createdFromDocumentProvider((
+            documentId: value.document.documentId,
+            chainId: value.document.chainId,
+          )),
+        )
+        .value;
+    return LockedDocumentBanner(
+      document: value.document,
+      createdFrom: createdFrom,
+      // Task 20 wires "Duplicate as new draft".
+      onDuplicateAsNewDraft: null,
+      onOpenCreatedDocument: (summary) =>
+          GoRouter.of(context).go('/documents/${summary.documentId}'),
+    );
+  }
+
+  Future<void> _openPropertiesSheet() {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      constraints: BoxConstraints(
+        maxHeight:
+            MediaQuery.sizeOf(context).height *
+            _propertiesSheetMaximumHeightFraction,
+      ),
+      builder: (context) => PropertiesPane(documentId: widget.documentId),
     );
   }
 }
@@ -110,11 +167,15 @@ class _CommandBar extends ConsumerWidget {
     required this.documentId,
     required this.state,
     required this.onFitWidth,
+    required this.propertiesButtonLabel,
+    required this.onPropertiesPressed,
   });
 
   final String documentId;
   final DocumentEditorState state;
   final VoidCallback onFitWidth;
+  final String propertiesButtonLabel;
+  final VoidCallback onPropertiesPressed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -185,6 +246,10 @@ class _CommandBar extends ConsumerWidget {
                 onRetry: controller.retrySave,
               ),
               const SizedBox(width: 16),
+              TextButton(
+                onPressed: onPropertiesPressed,
+                child: Text(propertiesButtonLabel),
+              ),
               TextButton(onPressed: onFitWidth, child: const Text('Fit width')),
               const SizedBox(width: 4),
               SizedBox(

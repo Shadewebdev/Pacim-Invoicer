@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../app/theme/app_typography.dart';
@@ -57,6 +59,7 @@ class SettingsTextField extends StatefulWidget {
     required this.onChanged,
     this.maxLines = 1,
     this.errorText,
+    this.isEnabled = true,
     super.key,
   });
 
@@ -65,6 +68,7 @@ class SettingsTextField extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final int maxLines;
   final String? errorText;
+  final bool isEnabled;
 
   @override
   State<SettingsTextField> createState() => _SettingsTextFieldState();
@@ -86,7 +90,8 @@ class _SettingsTextFieldState extends State<SettingsTextField> {
     return TextField(
       controller: _textController,
       onChanged: widget.onChanged,
-      minLines: widget.maxLines > 1 ? 3 : 1,
+      enabled: widget.isEnabled,
+      minLines: widget.maxLines > 1 ? math.min(3, widget.maxLines) : 1,
       maxLines: widget.maxLines,
       style: const TextStyle(fontSize: AppTypography.field),
       decoration: InputDecoration(
@@ -108,6 +113,7 @@ class SettingsParsedField<T> extends StatefulWidget {
     required this.parse,
     required this.onParsed,
     this.errorText = invalidNumberMessage,
+    this.isEnabled = true,
     super.key,
   });
 
@@ -116,6 +122,7 @@ class SettingsParsedField<T> extends StatefulWidget {
   final T? Function(String text) parse;
   final ValueChanged<T> onParsed;
   final String errorText;
+  final bool isEnabled;
 
   @override
   State<SettingsParsedField<T>> createState() => _SettingsParsedFieldState<T>();
@@ -144,6 +151,7 @@ class _SettingsParsedFieldState<T> extends State<SettingsParsedField<T>> {
     return TextField(
       controller: _textController,
       onChanged: _handleChanged,
+      enabled: widget.isEnabled,
       style: const TextStyle(fontSize: AppTypography.field),
       decoration: InputDecoration(
         labelText: widget.label,
@@ -158,12 +166,14 @@ class SettingsToggleRow extends StatelessWidget {
     required this.label,
     required this.value,
     required this.onChanged,
+    this.isEnabled = true,
     super.key,
   });
 
   final String label;
   final bool value;
   final ValueChanged<bool> onChanged;
+  final bool isEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +183,7 @@ class SettingsToggleRow extends StatelessWidget {
       visualDensity: VisualDensity.compact,
       title: Text(label, style: const TextStyle(fontSize: AppTypography.body)),
       value: value,
-      onChanged: onChanged,
+      onChanged: isEnabled ? onChanged : null,
     );
   }
 }

@@ -145,6 +145,14 @@ class SettingsController extends AsyncNotifier<DocumentSettings> {
     });
   }
 
+  /// Saves an edit that is still waiting for the debounce, for example when
+  /// the app is about to be hidden or closed.
+  Future<void> flushPendingSave() {
+    _saveTimer?.cancel();
+    _savePendingSettings();
+    return _lastSave;
+  }
+
   void _savePendingSettings() {
     final settings = _pendingSettings;
     if (settings == null) return;

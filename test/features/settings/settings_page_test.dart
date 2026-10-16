@@ -90,6 +90,32 @@ void main() {
     );
   });
 
+  testWidgets(
+    'hiding the app saves settings without waiting for the debounce',
+    (tester) async {
+      final repository = await pumpSettingsPage(tester);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Company name'),
+        'Pacim Sdn Bhd',
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(repository.saveCount, 0);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        repository.currentSettings.companyDetails.companyName,
+        'Pacim Sdn Bhd',
+      );
+      expect(repository.saveCount, 1);
+      await tester.pump(const Duration(seconds: 1));
+      expect(repository.saveCount, 1);
+    },
+  );
+
   testWidgets('a non-numeric tax rate shows an error and is not saved', (
     tester,
   ) async {

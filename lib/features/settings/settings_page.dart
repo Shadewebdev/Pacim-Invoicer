@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -45,6 +47,28 @@ class SettingsPage extends ConsumerStatefulWidget {
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   _SettingsSection _section = _SettingsSection.company;
   DocumentType _selectedType = DocumentType.quotation;
+  late final AppLifecycleListener _lifecycleListener;
+
+  @override
+  void initState() {
+    super.initState();
+    // A hidden browser tab or backgrounded app may never come back, so an edit
+    // still waiting for the debounce is saved now.
+    _lifecycleListener = AppLifecycleListener(
+      onHide: _flushPendingSettings,
+      onPause: _flushPendingSettings,
+    );
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
+  }
+
+  void _flushPendingSettings() => unawaited(
+    ref.read(settingsControllerProvider.notifier).flushPendingSave(),
+  );
 
   @override
   Widget build(BuildContext context) {

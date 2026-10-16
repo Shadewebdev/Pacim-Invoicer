@@ -81,14 +81,10 @@ String cellEditText(
     format.copyWith(thousandsSeparator: ''),
     includeSymbol: false,
   ),
-  // The percent parser always reads `.` as the decimal point.
   LineItemColumn.discount =>
     line.discountPercentScaled == 0
         ? ''
-        : _percentText(
-            line.discountPercentScaled,
-            CurrencyFormat.defaultFormat,
-          ),
+        : _percentText(line.discountPercentScaled, format),
   LineItemColumn.rowNumber || LineItemColumn.amount => '',
 };
 
@@ -122,7 +118,7 @@ LineItem? lineWithCellInput(
       if (price == null) return null;
       return line.copyWith(unitPriceMinor: price);
     case LineItemColumn.discount:
-      final percent = isBlank ? 0 : parsePercentInput(text);
+      final percent = isBlank ? 0 : parsePercentInput(text, format: format);
       if (percent == null || percent < 0 || percent > 10000) return null;
       return line.copyWith(discountPercentScaled: percent);
     case LineItemColumn.rowNumber || LineItemColumn.amount:
@@ -288,8 +284,12 @@ class _LineItemRowState extends State<LineItemRow> {
 
   Widget _buildGutter() {
     final iconColor = DocumentPageStyles.mutedInk;
-    return Opacity(
-      opacity: _showsRowControls ? 1 : 0,
+    // Hidden controls keep their space and state but cannot be hit or read.
+    return Visibility(
+      visible: _showsRowControls,
+      maintainSize: true,
+      maintainAnimation: true,
+      maintainState: true,
       child: Padding(
         padding: const EdgeInsets.only(top: 4, right: 4),
         child: Row(

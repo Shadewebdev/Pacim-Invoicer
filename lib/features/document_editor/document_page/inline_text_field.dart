@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -62,7 +64,13 @@ class _InlineTextFieldState extends State<InlineTextField> {
   @override
   void dispose() {
     // Navigating away or removing a focused field must not drop typed text.
-    _commit();
+    // Committing changes the editor's provider, which may not happen while the
+    // tree is being torn down, so it waits for the frame to finish.
+    if (!widget.readOnly && _controller.text != _lastCommittedText) {
+      final text = _controller.text;
+      final commit = widget.onCommitted;
+      scheduleMicrotask(() => commit(text));
+    }
     _focusNode
       ..removeListener(_onFocusChanged)
       ..dispose();

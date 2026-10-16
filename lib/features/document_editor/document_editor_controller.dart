@@ -384,4 +384,11 @@ final documentEditorControllerProvider =
       DocumentEditorController,
       DocumentEditorState,
       String
-    >(DocumentEditorController.new);
+    >(DocumentEditorController.new, retry: _retryUnlessDocumentIsMissing);
+
+/// Riverpod's default retry, except that a document that does not exist fails
+/// once: retrying cannot make it appear.
+Duration? _retryUnlessDocumentIsMissing(int retryCount, Object error) {
+  if (error is DocumentNotFoundException) return null;
+  return ProviderContainer.defaultRetry(retryCount, error);
+}

@@ -27,11 +27,17 @@ int? parseQuantityInput(String input, CurrencyFormat format) {
 }
 
 /// Parses `8`, `8.5` or `8.5%` into a percent scaled by 100, or `null`.
-int? parsePercentInput(String input) {
+///
+/// Uses the separators of [format], so `8,5` reads as 8.5% when the decimal
+/// separator is a comma.
+int? parsePercentInput(
+  String input, {
+  CurrencyFormat format = CurrencyFormat.defaultFormat,
+}) {
   final normalized = _normalizeDecimalText(
     input.replaceAll('%', ''),
-    thousandsSeparator: ',',
-    decimalSeparator: '.',
+    thousandsSeparator: format.thousandsSeparator,
+    decimalSeparator: format.decimalSeparator,
   );
   if (normalized == null) return null;
   return _scaleDecimalHalfUp(normalized, 2);

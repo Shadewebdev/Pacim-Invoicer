@@ -6,6 +6,7 @@ import '../../../domain/models/document_settings.dart';
 import '../../../domain/models/pricing_terms.dart';
 import '../../../shared/formatting/money_formatter.dart';
 import '../../../shared/formatting/number_input_parser.dart';
+import '../../../shared/formatting/percent_formatter.dart';
 import '../settings_controller.dart';
 import '../settings_fields.dart';
 
@@ -138,9 +139,12 @@ class PricingSettingsSection extends StatelessWidget {
         ),
         SettingsParsedField<int>(
           label: 'Tax rate (%)',
-          initialText: _formatPercentScaled(pricing.taxRatePercentScaled),
+          initialText: formatPercentScaled(
+            pricing.taxRatePercentScaled,
+            decimalSeparator: currency.decimalSeparator,
+          ),
           parse: (text) {
-            final scaled = parsePercentInput(text);
+            final scaled = parsePercentInput(text, format: currency);
             if (scaled == null ||
                 scaled < 0 ||
                 scaled > _maximumTaxRatePercentScaled) {
@@ -154,13 +158,4 @@ class PricingSettingsSection extends StatelessWidget {
       ],
     );
   }
-}
-
-/// 800 becomes `8` and 850 becomes `8.5`.
-String _formatPercentScaled(int percentScaled) {
-  final whole = percentScaled ~/ 100;
-  final fraction = percentScaled % 100;
-  if (fraction == 0) return '$whole';
-  final fractionText = fraction.toString().padLeft(2, '0');
-  return '$whole.${fractionText.replaceFirst(RegExp(r'0$'), '')}';
 }

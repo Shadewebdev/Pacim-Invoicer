@@ -25,6 +25,7 @@ class ImagePickerField extends ConsumerStatefulWidget {
     required this.onImagePicked,
     required this.onRemove,
     this.pickImageBytes = pickImageBytesFromDevice,
+    this.isEnabled = true,
     super.key,
   });
 
@@ -33,6 +34,7 @@ class ImagePickerField extends ConsumerStatefulWidget {
   final Future<void> Function(Uint8List bytes) onImagePicked;
   final VoidCallback onRemove;
   final Future<Uint8List?> Function() pickImageBytes;
+  final bool isEnabled;
 
   @override
   ConsumerState<ImagePickerField> createState() => _ImagePickerFieldState();
@@ -96,14 +98,14 @@ class _ImagePickerFieldState extends ConsumerState<ImagePickerField> {
                 runSpacing: 8,
                 children: [
                   OutlinedButton(
-                    onPressed: _choose,
+                    onPressed: widget.isEnabled ? _choose : null,
                     child: Text(
                       assetId == null ? 'Choose image' : 'Replace image',
                     ),
                   ),
                   if (assetId != null)
                     TextButton(
-                      onPressed: widget.onRemove,
+                      onPressed: widget.isEnabled ? widget.onRemove : null,
                       child: const Text('Remove image'),
                     ),
                 ],

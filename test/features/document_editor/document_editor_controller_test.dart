@@ -484,4 +484,42 @@ void main() {
       expect(harness.state.document.notes, 'Thank you.');
     });
   });
+
+  test('a missing document fails once and is not retried', () {
+    fakeAsync((async) {
+      final repository = _CountingDocumentRepository();
+      // No `retry:` override, so the provider's own retry rule is under test.
+      final container = ProviderContainer(
+        overrides: [
+          documentRepositoryProvider.overrideWithValue(repository),
+          settingsRepositoryProvider.overrideWithValue(
+            FakeSettingsRepository(),
+          ),
+          clockProvider.overrideWithValue(() => _now),
+        ],
+      );
+      container.listen(
+        documentEditorControllerProvider('gone'),
+        (_, _) {},
+        onError: (_, _) {},
+      );
+      async.flushMicrotasks();
+      async.elapse(const Duration(seconds: 30));
+      async.flushMicrotasks();
+
+      expect(repository.getDocumentCalls, 1);
+      container.dispose();
+      async.flushMicrotasks();
+    });
+  });
+}
+
+class _CountingDocumentRepository extends FakeDocumentRepository {
+  int getDocumentCalls = 0;
+
+  @override
+  Future<BusinessDocument> getDocument(String documentId) {
+    getDocumentCalls++;
+    return super.getDocument(documentId);
+  }
 }
