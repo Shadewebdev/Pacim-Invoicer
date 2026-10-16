@@ -1,0 +1,23 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'app_router.dart';
+import 'theme/app_theme.dart';
+
+class PacimInvoicerApp extends ConsumerWidget {
+  const PacimInvoicerApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final platform = defaultTargetPlatform;
+    return MaterialApp.router(
+      title: 'Pacim Invoicer',
+      debugShowCheckedModeBanner: false,
+      themeMode: ref.watch(themeModeProvider),
+      theme: buildAppTheme(brightness: Brightness.light, platform: platform),
+      darkTheme: buildAppTheme(brightness: Brightness.dark, platform: platform),
+      routerConfig: ref.watch(appRouterProvider),
+    );
+  }
+}
