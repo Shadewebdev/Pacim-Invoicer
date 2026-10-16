@@ -492,7 +492,39 @@ Fonts (IBM Plex Sans, Noto Sans) are bundled as assets, not fetched at runtime.
 - Immutable models, with all mutation through named controller intents.
 - `flutter_lints` with zero warnings; `dart format` enforced.
 
-## 12. Milestones (for the implementation plan)
+## 12. Execution model (subagents)
+
+The implementation plan is executed by an orchestrating session that dispatches project subagents
+defined in `.claude/agents/`. The orchestrator itself writes no product code. Its jobs:
+- hand out tasks in plan order;
+- review each result against the spec;
+- commit after each verified task.
+
+| Agent | Model / effort | Used for |
+|---|---|---|
+| `flutter-coder` | Sonnet 5.5, medium | Every routine coding task in the plan: models, services, repositories, controllers, widgets, PDF. One task per dispatch. |
+| `flutter-tester` | Haiku 5.5, low | Running `flutter analyze`, tests and build checks after each coding task and at milestone checkpoints. Reports only; never edits `lib/`. |
+| `flutter-architect` | Opus 5.5, medium | Escalations only: problems needing heavy planning or cross-layer reasoning, and bugs `flutter-coder` couldn't fix. |
+
+Loop per task:
+1. Dispatch `flutter-coder` with the task text.
+2. Dispatch `flutter-tester` to verify.
+3. The orchestrator reviews the diff.
+4. If verification passes, commit.
+
+If verification fails, re-dispatch `flutter-coder` once with the failure report. A second failure is
+escalated to `flutter-architect`.
+
+Tasks known in advance to be complex go straight to `flutter-architect`:
+- atomic number allocation and the upgrade + lock transaction;
+- the inline line-item grid's keyboard and focus model;
+- multi-page PDF table splitting;
+- Drift WASM setup for web.
+
+Tasks that touch separate files and don't depend on each other may run as parallel `flutter-coder`
+dispatches. Tasks within the same milestone that share files run one after another.
+
+## 13. Milestones (for the implementation plan)
 1. Project scaffold, theme tokens, app shell, routing.
 2. Domain models and services, with unit tests.
 3. Drift repositories and the contract test suite.
