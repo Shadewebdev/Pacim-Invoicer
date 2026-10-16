@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/test_provider_overrides.dart';
+
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
 import 'package:pacim_invoicer/domain/models/document_summary.dart';
@@ -99,11 +102,7 @@ void main() {
       _app(
         const DocumentEditorPage(documentId: 'doc-1'),
         overrides: [
-          documentRepositoryProvider.overrideWithValue(documents),
-          settingsRepositoryProvider.overrideWithValue(
-            FakeSettingsRepository(),
-          ),
-          assetRepositoryProvider.overrideWithValue(FakeAssetRepository()),
+          ...fakeStorageOverrides(documents: documents),
           clockProvider.overrideWithValue(() => DateTime(2026, 10, 18)),
         ],
       ),

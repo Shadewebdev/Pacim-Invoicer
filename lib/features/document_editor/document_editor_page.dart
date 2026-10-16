@@ -53,7 +53,34 @@ class _DocumentEditorPageState extends ConsumerState<DocumentEditorPage> {
     context: context,
     ref: ref,
     currentDocumentId: () => widget.documentId,
+    restoreFocus: _pageFocusNode.requestFocus,
   );
+
+  final FocusNode _pageFocusNode = FocusNode(
+    debugLabel: 'document editor page',
+    skipTraversal: true,
+  );
+
+  @override
+  void dispose() {
+    _pageFocusNode.dispose();
+    super.dispose();
+  }
+
+  /// Upgrades like the Upgrade button would: nothing happens while it is
+  /// hidden or disabled.
+  void _upgradeFromShortcut(BusinessDocument document) {
+    if (document.documentType.nextStage == null) return;
+    final blocker = ref.read(
+      upgradeBlockerProvider((
+        documentId: document.documentId,
+        chainId: document.chainId,
+      )),
+    );
+    if (blocker.hasValue && blocker.value == null) {
+      unawaited(_actions.upgradeCurrent());
+    }
+  }
 
   void _fitWidth() {
     if (_canvasWidth <= 0) return;
@@ -95,14 +122,14 @@ class _DocumentEditorPageState extends ConsumerState<DocumentEditorPage> {
             control: true,
             shift: true,
           ): () =>
-              unawaited(_actions.upgradeCurrent()),
+              _upgradeFromShortcut(value.document),
           const SingleActivator(LogicalKeyboardKey.keyN, control: true): () =>
               unawaited(_actions.createSameType()),
         },
         // Takes focus when nothing else has it, so shortcuts always work.
         child: Focus(
+          focusNode: _pageFocusNode,
           autofocus: true,
-          skipTraversal: true,
           child: LayoutBuilder(
             builder: (context, constraints) =>
                 _buildEditor(value, constraints.maxWidth),

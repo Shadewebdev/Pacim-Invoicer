@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/test_provider_overrides.dart';
+
 import 'package:pacim_invoicer/app/app_router.dart';
 import 'package:pacim_invoicer/app/pacim_invoicer_app.dart';
 import 'package:pacim_invoicer/app/shell/navigation_leave_guard.dart';
@@ -59,8 +62,7 @@ Future<void> _pumpGuardedEditor(
   _container = ProviderContainer(
     retry: (_, _) => null,
     overrides: [
-      documentRepositoryProvider.overrideWithValue(_documents),
-      settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
+      ...fakeStorageOverrides(documents: _documents),
       clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
       windowCloseInterceptorProvider.overrideWithValue(_window),
     ],
@@ -332,8 +334,7 @@ void main() {
     final container = ProviderContainer(
       retry: (_, _) => null,
       overrides: [
-        documentRepositoryProvider.overrideWithValue(documents),
-        settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
+        ...fakeStorageOverrides(documents: documents),
         clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
         windowCloseInterceptorProvider.overrideWithValue(interceptor),
       ],
@@ -383,8 +384,7 @@ void main() {
     final container = ProviderContainer(
       retry: (_, _) => null,
       overrides: [
-        documentRepositoryProvider.overrideWithValue(documents),
-        settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
+        ...fakeStorageOverrides(documents: documents),
         clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
       ],
     );

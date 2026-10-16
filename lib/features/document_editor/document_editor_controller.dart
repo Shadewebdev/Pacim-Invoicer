@@ -33,6 +33,9 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
   late DateTime Function() _clock;
   StreamSubscription<BusinessDocument>? _storedDocumentSubscription;
   Timer? _autosaveTimer;
+
+  /// True while saving is held back, for example during a delete.
+  bool _isAutosaveHeld = false;
   Future<void> _lastSave = Future<void>.value();
 
   /// The last state published, readable while the provider is disposing.
@@ -227,6 +230,24 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
     );
   }
 
+  /// Stops every save, including the one when the editor closes, until
+  /// [releaseAutosave]. Pending edits stay in state. Used while the document
+  /// is being deleted, so autosave cannot write it back.
+  void holdAutosave() {
+    _isAutosaveHeld = true;
+    _autosaveTimer?.cancel();
+  }
+
+  /// Lets saving resume after [holdAutosave], re-arming autosave when edits
+  /// are waiting.
+  void releaseAutosave() {
+    _isAutosaveHeld = false;
+    if (state.value?.saveStatus == SaveStatus.pending) {
+      _autosaveTimer?.cancel();
+      _autosaveTimer = Timer(_autosaveDelay, () => unawaited(_enqueueSave()));
+    }
+  }
+
   // Internals.
 
   void _publish(DocumentEditorState editorState) {
@@ -326,6 +347,7 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
 
   /// Runs saves one after another so two never overlap.
   Future<void> _enqueueSave() {
+    if (_isAutosaveHeld) return Future<void>.value();
     final previous = _lastSave;
     // A failed earlier save must never block the ones after it.
     final saved = previous
@@ -389,7 +411,7 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
         current != null &&
         (current.saveStatus == SaveStatus.pending ||
             current.saveStatus == SaveStatus.failed);
-    if (current == null || !hasUnsavedEdits) return;
+    if (current == null || !hasUnsavedEdits || _isAutosaveHeld) return;
     final toSave = current.document.copyWith(updatedAt: _clock());
     final repository = _repository;
     // Nothing is left to report to once the provider is gone.

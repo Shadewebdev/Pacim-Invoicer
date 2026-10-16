@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../support/test_provider_overrides.dart';
+
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
+import 'package:pacim_invoicer/domain/exceptions/document_exceptions.dart';
 import 'package:pacim_invoicer/domain/models/business_document.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
 import 'package:pacim_invoicer/features/document_editor/document_editor_controller.dart';
@@ -25,22 +31,18 @@ Future<void> _pump(
   WidgetTester tester,
   List<BusinessDocument> seeded, {
   String openId = 'doc-1',
+  FakeDocumentRepository? repository,
 }) async {
   tester.view.physicalSize = const Size(1400, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  _documents = FakeDocumentRepository();
+  _documents = repository ?? FakeDocumentRepository();
   seeded.forEach(_documents.seed);
   _container = ProviderContainer(
     retry: (_, _) => null,
     overrides: [
-      documentRepositoryProvider.overrideWithValue(_documents),
-      numberSequenceRepositoryProvider.overrideWithValue(
-        FakeNumberSequenceRepository(),
-      ),
-      settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
-      assetRepositoryProvider.overrideWithValue(FakeAssetRepository()),
+      ...fakeStorageOverrides(documents: _documents),
       idGeneratorProvider.overrideWithValue(SequentialIdGenerator()),
       clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
     ],
@@ -109,6 +111,48 @@ BusinessDocument _salesOrder() => buildTestDocument(
   documentId: 'so-1',
   sourceDocumentId: 'doc-1',
 );
+
+class _FailingUpgradeRepository extends FakeDocumentRepository {
+  @override
+  Future<void> saveUpgrade({
+    required BusinessDocument lockedSource,
+    required BusinessDocument createdDocument,
+  }) => throw const StorageWriteException('fake upgrade failure');
+}
+
+class _FailingDeleteRepository extends FakeDocumentRepository {
+  @override
+  Future<void> deleteDocument(String documentId) =>
+      throw const StorageWriteException('fake delete failure');
+}
+
+/// Makes an edit during each of the first [editedSaves] saves, so the editor
+/// is still unsaved when the save returns.
+class _EditsDuringSaveRepository extends FakeDocumentRepository {
+  _EditsDuringSaveRepository({required this.editedSaves});
+
+  final int editedSaves;
+  int _saves = 0;
+
+  @override
+  Future<void> saveDocument(BusinessDocument document) async {
+    await super.saveDocument(document);
+    if (_saves++ < editedSaves) {
+      _controllerFor(document.documentId)
+          .updateNotes('edit during save $_saves');
+    }
+  }
+}
+
+class _GatedDeleteRepository extends FakeDocumentRepository {
+  final gate = Completer<void>();
+
+  @override
+  Future<void> deleteDocument(String documentId) async {
+    await gate.future;
+    await super.deleteDocument(documentId);
+  }
+}
 
 void main() {
   testWidgets('tapping + Sales order upgrades and navigates to new document', (
@@ -225,6 +269,23 @@ void main() {
     expect(_documents.saveCount, 1);
   });
 
+  testWidgets('Ctrl+S keeps working after the first flush moved focus', (
+    tester,
+  ) async {
+    await _pump(tester, [buildTestDocument()]);
+    await tester.tap(find.byType(EditableText).first);
+    await tester.pump();
+    await tester.enterText(find.byType(EditableText).first, 'First');
+
+    await _pressChord(tester, LogicalKeyboardKey.keyS);
+    expect(_documents.saveCount, 1);
+
+    _controllerFor('doc-1').updateNotes('Second');
+    await _pressChord(tester, LogicalKeyboardKey.keyS);
+    expect(_documents.saveCount, 2);
+    expect(_documents.storedDocuments.single.notes, 'Second');
+  });
+
   testWidgets('Ctrl+Shift+U upgrades the document', (tester) async {
     await _pump(tester, [buildTestDocument()]);
 
@@ -237,6 +298,122 @@ void main() {
       isTrue,
     );
     expect(_location, isNot('/documents/doc-1'));
+  });
+
+  testWidgets('a failed upgrade names the document being upgraded', (
+    tester,
+  ) async {
+    await _pump(tester, [
+      _lockedQuotation(),
+      _salesOrder().copyWith(documentNumber: 'SO-2026-0002'),
+    ], repository: _FailingUpgradeRepository());
+
+    await tester.tap(find.text('+ Delivery order'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text("Couldn't upgrade SO-2026-0002. Try again."),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('an edit landing during the save is flushed before upgrading', (
+    tester,
+  ) async {
+    await _pump(tester, [
+      buildTestDocument(),
+    ], repository: _EditsDuringSaveRepository(editedSaves: 1));
+    _controllerFor('doc-1').updateNotes('first');
+
+    await tester.tap(find.text('Upgrade to sales order'));
+    await tester.pumpAndSettle();
+
+    final created = _documents.storedDocuments.singleWhere(
+      (document) => document.documentType == DocumentType.salesOrder,
+    );
+    expect(created.notes, 'edit during save 1');
+  });
+
+  testWidgets('a save that never settles refuses the upgrade', (tester) async {
+    await _pump(tester, [
+      buildTestDocument(),
+    ], repository: _EditsDuringSaveRepository(editedSaves: 100));
+    _controllerFor('doc-1').updateNotes('first');
+
+    await tester.tap(find.text('Upgrade to sales order'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text("Couldn't save — fix this before upgrading"),
+      findsOneWidget,
+    );
+    expect(
+      _documents.storedDocuments.any(
+        (document) => document.documentType == DocumentType.salesOrder,
+      ),
+      isFalse,
+    );
+    _controllerFor('doc-1').discardPendingChanges();
+  });
+
+  testWidgets('a failed delete keeps the edits and says so', (tester) async {
+    await _pump(tester, [
+      buildTestDocument(),
+    ], repository: _FailingDeleteRepository());
+    _controllerFor('doc-1').updateNotes('keep me');
+
+    await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text("Couldn't delete QT-2026-0001. Try again."),
+      findsOneWidget,
+    );
+    expect(
+      _container
+          .read(documentEditorControllerProvider('doc-1'))
+          .requireValue
+          .document
+          .notes,
+      'keep me',
+    );
+    expect(_location, '/documents/doc-1');
+    _controllerFor('doc-1').discardPendingChanges();
+  });
+
+  testWidgets('Ctrl+Shift+U does nothing while Upgrade is blocked', (
+    tester,
+  ) async {
+    await _pump(tester, [_lockedQuotation(), _salesOrder()]);
+
+    await _pressChord(tester, LogicalKeyboardKey.keyU, shift: true);
+
+    expect(find.byType(SnackBar), findsNothing);
+    expect(_documents.storedDocuments, hasLength(2));
+    expect(_location, '/documents/doc-1');
+  });
+
+  testWidgets('deleting a draft with a pending edit never re-creates it', (
+    tester,
+  ) async {
+    final repository = _GatedDeleteRepository();
+    await _pump(tester, [buildTestDocument()], repository: repository);
+    _controllerFor('doc-1').updateNotes('pending edit');
+
+    await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pump();
+    // The autosave delay passes while the delete is still in flight.
+    await tester.pump(const Duration(seconds: 3));
+    repository.gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(repository.storedDocuments, isEmpty);
+    expect(repository.saveCount, 0);
+    expect(_location, '/quotations');
   });
 
   testWidgets('Ctrl+N creates a document of the same type and opens it', (

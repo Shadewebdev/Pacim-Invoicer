@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/shell/navigation_leave_guard.dart';
 import '../../domain/exceptions/document_exceptions.dart';
 import '../../domain/models/business_document.dart';
+import '../../data/repository_providers.dart';
 import 'document_commands.dart';
 import 'document_editor_controller.dart';
 import 'document_editor_state.dart';
@@ -11,11 +12,16 @@ import 'document_editor_state.dart';
 /// What the editor's command bar, breadcrumb and shortcuts do. Each command
 /// first saves what is being typed, so a command never works from a stale copy
 /// of the document, and reports problems in a SnackBar.
+/// How many times pending edits are saved before giving up, because an edit can
+/// land while a save is running.
+const int _maximumFlushAttempts = 3;
+
 class DocumentEditorActions {
   DocumentEditorActions({
     required this.context,
     required this.ref,
     required this.currentDocumentId,
+    required this.restoreFocus,
   });
 
   /// The editor page's context, which must stay mounted while commands run.
@@ -24,6 +30,10 @@ class DocumentEditorActions {
 
   /// Read on every use because the page can switch to another document.
   final String Function() currentDocumentId;
+
+  /// Gives keyboard focus back to the page after a field was blurred, so the
+  /// page shortcuts keep receiving keys.
+  final VoidCallback restoreFocus;
 
   bool _isRunning = false;
 
@@ -45,7 +55,8 @@ class DocumentEditorActions {
   /// Upgrades [sourceDocumentId] and opens the document it created.
   Future<void> upgrade(String sourceDocumentId) => _runExclusively(() async {
     if (!await _flushPendingEdits(refusal: 'upgrading')) return;
-    await _runCommand("Couldn't upgrade ${_numberOfCurrent()}. Try again.", () {
+    final sourceNumber = await _numberOf(sourceDocumentId);
+    await _runCommand("Couldn't upgrade $sourceNumber. Try again.", () {
       return _openCreated(_commands.upgradeDocument(sourceDocumentId));
     });
   });
@@ -57,7 +68,7 @@ class DocumentEditorActions {
   Future<void> duplicate() => _runExclusively(() async {
     if (!await _flushPendingEdits(refusal: 'duplicating')) return;
     await _runCommand(
-      "Couldn't duplicate ${_numberOfCurrent()}. Try again.",
+      "Couldn't duplicate ${_document?.documentNumber ?? 'the document'}. Try again.",
       () => _openCreated(_commands.duplicateDocument(currentDocumentId())),
     );
   });
@@ -96,12 +107,15 @@ class DocumentEditorActions {
       ),
     );
     if (confirmed != true || !context.mounted) return;
-    // Edits to a document about to disappear must not be autosaved back.
-    _controller.discardPendingChanges();
+    // Holding autosave stops pending edits being written back over the delete.
+    _controller.holdAutosave();
+    var isDeleted = false;
     await _runCommand(
       "Couldn't delete ${document.documentNumber}. Try again.",
       () async {
         await _commands.deleteDocument(document.documentId);
+        isDeleted = true;
+        _controller.discardPendingChanges();
         if (!context.mounted) return;
         await goAfterLeaveGuard(
           context,
@@ -110,13 +124,13 @@ class DocumentEditorActions {
         );
       },
     );
+    // A failed delete keeps the edits, so saving carries on as before.
+    if (!isDeleted) _controller.releaseAutosave();
   });
 
   /// Opens another document of the chain.
   Future<void> open(String documentId) =>
       goAfterLeaveGuard(context, ref, '/documents/$documentId');
-
-  String _numberOfCurrent() => _document?.documentNumber ?? 'the document';
 
   Future<void> _openCreated(Future<String> creating) async {
     final documentId = await creating;
@@ -127,18 +141,35 @@ class DocumentEditorActions {
   /// Blurs the focused field, waits for its text to be committed as an edit
   /// and saves. Returns false, after telling the person, when the save failed.
   Future<bool> _flushPendingEdits({String? refusal}) async {
-    FocusManager.instance.primaryFocus?.unfocus();
-    await Future<void>.delayed(Duration.zero);
-    await _controller.saveNow();
-    final status = ref
-        .read(documentEditorControllerProvider(currentDocumentId()))
-        .value
-        ?.saveStatus;
-    if (status != SaveStatus.failed) return true;
+    for (var attempt = 0; attempt < _maximumFlushAttempts; attempt++) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      restoreFocus();
+      await Future<void>.delayed(Duration.zero);
+      await _controller.saveNow();
+      final status = ref
+          .read(documentEditorControllerProvider(currentDocumentId()))
+          .value
+          ?.saveStatus;
+      if (status == null || status == SaveStatus.saved) return true;
+      // A failed save will not get better by trying again straight away.
+      if (status == SaveStatus.failed) break;
+    }
     if (refusal != null) {
       _showProblem("Couldn't save — fix this before $refusal");
     }
     return false;
+  }
+
+  /// The number of [documentId] for messages, or a stand-in if unreadable.
+  Future<String> _numberOf(String documentId) async {
+    try {
+      return (await ref
+              .read(documentRepositoryProvider)
+              .getDocument(documentId))
+          .documentNumber;
+    } on Object {
+      return 'the document';
+    }
   }
 
   /// Ignores a command that arrives while another is still running, such as a

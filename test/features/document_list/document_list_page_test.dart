@@ -4,6 +4,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/test_provider_overrides.dart';
+
 import 'package:pacim_invoicer/app/shell/status_bar_count_provider.dart';
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
@@ -51,11 +54,10 @@ Future<FakeDocumentRepository> pumpListPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        documentRepositoryProvider.overrideWithValue(documents),
-        numberSequenceRepositoryProvider.overrideWithValue(
-          sequences ?? FakeNumberSequenceRepository(),
+        ...fakeStorageOverrides(
+          documents: documents,
+          numberSequences: sequences,
         ),
-        settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
         clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
       ],
       child: MaterialApp(

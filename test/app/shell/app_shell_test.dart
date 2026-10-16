@@ -1,24 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/test_provider_overrides.dart';
+
 import 'package:pacim_invoicer/app/app_router.dart';
 import 'package:pacim_invoicer/app/pacim_invoicer_app.dart';
 import 'package:pacim_invoicer/app/shell/status_bar_message_provider.dart';
-import 'package:pacim_invoicer/data/repository_providers.dart';
-
-import '../../support/fake_repositories.dart';
 
 Future<ProviderContainer> pumpApp(WidgetTester tester, Size size) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final container = ProviderContainer(
-    overrides: [
-      settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
-      documentRepositoryProvider.overrideWithValue(FakeDocumentRepository()),
-    ],
-  );
+  final container = ProviderContainer(overrides: [...fakeStorageOverrides()]);
   addTearDown(container.dispose);
   await tester.pumpWidget(
     UncontrolledProviderScope(
