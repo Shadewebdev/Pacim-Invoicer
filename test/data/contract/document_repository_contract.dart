@@ -543,6 +543,28 @@ void runDocumentRepositoryContract(
         );
       });
 
+      test(
+        'saveUpgrade rejects a created document that is already locked',
+        () async {
+          final quotation = documentWith(id: 'qt');
+          await repository.saveDocument(quotation);
+          final lockedSalesOrder = derivedFrom(
+            quotation,
+            id: 'so',
+            type: DocumentType.salesOrder,
+            number: 'SO-2026-0001',
+          ).copyWith(lockedAt: lockTime);
+
+          await expectLater(
+            repository.saveUpgrade(
+              lockedSource: lockedCopyOf(quotation),
+              createdDocument: lockedSalesOrder,
+            ),
+            throwsA(isA<ArgumentError>()),
+          );
+        },
+      );
+
       test('saveUpgrade throws DocumentLockedException when the source differs '
           'from the stored one in more than the lock', () async {
         final quotation = documentWith(id: 'qt');

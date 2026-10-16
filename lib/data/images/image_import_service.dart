@@ -8,6 +8,8 @@ const int _maxEncodedBytes = 250 * 1024;
 const int _initialJpegQuality = 85;
 const int _minimumJpegQuality = 45;
 const int _jpegQualityStep = 10;
+const double _downscaleFactor = 0.75;
+const int _minimumEdgePixels = 64;
 
 class ImageImportException implements Exception {
   const ImageImportException();
@@ -53,16 +55,50 @@ Uint8List? _prepareImageBytes(Uint8List originalBytes) {
         )
       : upright;
 
-  if (resized.hasAlpha) return img.encodePng(resized);
+  return _encodeWithinSizeLimit(resized);
+}
 
+/// Encodes with the format's normal steps, then as a last resort shrinks the
+/// image until the result fits or the longest edge reaches the minimum.
+Uint8List _encodeWithinSizeLimit(img.Image image) {
+  final keepsTransparency = _hasTransparentPixel(image);
+  var current = image;
+  while (true) {
+    final encoded = keepsTransparency
+        ? img.encodePng(current)
+        : _encodeJpegWithinLimit(current);
+    if (encoded.lengthInBytes <= _maxEncodedBytes) return encoded;
+    if (max(current.width, current.height) <= _minimumEdgePixels) {
+      return encoded;
+    }
+    current = img.copyResize(
+      current,
+      width: max(1, (current.width * _downscaleFactor).round()),
+      height: max(1, (current.height * _downscaleFactor).round()),
+      interpolation: img.Interpolation.average,
+    );
+  }
+}
+
+/// Lowers the JPEG quality step by step; returns the last attempt, which may
+/// still be over the limit.
+Uint8List _encodeJpegWithinLimit(img.Image image) {
   var quality = _initialJpegQuality;
-  var encoded = img.encodeJpg(resized, quality: quality);
+  var encoded = img.encodeJpg(image, quality: quality);
   while (encoded.lengthInBytes > _maxEncodedBytes &&
       quality > _minimumJpegQuality) {
     quality -= _jpegQualityStep;
-    encoded = img.encodeJpg(resized, quality: quality);
+    encoded = img.encodeJpg(image, quality: quality);
   }
   return encoded;
+}
+
+bool _hasTransparentPixel(img.Image image) {
+  if (!image.hasAlpha) return false;
+  for (final pixel in image) {
+    if (pixel.a < pixel.maxChannelValue) return true;
+  }
+  return false;
 }
 
 img.Image? _tryDecode(Uint8List bytes) {

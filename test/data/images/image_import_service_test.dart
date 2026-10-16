@@ -14,6 +14,20 @@ Uint8List _noisyPng(int width, int height) {
   return img.encodePng(image);
 }
 
+Uint8List _noisyRgbaPng(int width, int height, {required bool transparent}) {
+  final random = Random(11);
+  final image = img.Image(width: width, height: height, numChannels: 4);
+  for (final pixel in image) {
+    pixel.setRgba(
+      random.nextInt(256),
+      random.nextInt(256),
+      random.nextInt(256),
+      transparent ? random.nextInt(200) : 255,
+    );
+  }
+  return img.encodePng(image);
+}
+
 void main() {
   const service = ImageImportService();
 
@@ -67,5 +81,22 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('a noisy transparent image is kept at most 250 KB', () async {
+    final prepared = await service.prepareImageForStorage(
+      _noisyRgbaPng(600, 600, transparent: true),
+    );
+
+    expect(prepared.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
+    expect(prepared.lengthInBytes, lessThanOrEqualTo(250 * 1024));
+  });
+
+  test('an opaque RGBA image is encoded as JPEG', () async {
+    final prepared = await service.prepareImageForStorage(
+      _noisyRgbaPng(100, 100, transparent: false),
+    );
+
+    expect(prepared.sublist(0, 2), [0xFF, 0xD8]);
   });
 }
