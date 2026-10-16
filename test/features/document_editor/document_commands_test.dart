@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
+import 'package:pacim_invoicer/domain/exceptions/document_exceptions.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
 import 'package:pacim_invoicer/features/document_editor/document_commands.dart';
 
@@ -93,5 +94,27 @@ void main() {
     await harness.commands.deleteDocument(quotationId);
 
     expect(harness.documents.storedDocuments, isEmpty);
+  });
+
+  test('a blocked upgrade does not allocate a number', () async {
+    final harness = _Harness();
+    addTearDown(harness.container.dispose);
+    final quotationId = await harness.commands.createDocument(
+      DocumentType.quotation,
+    );
+    await harness.commands.upgradeDocument(quotationId);
+
+    await expectLater(
+      harness.commands.upgradeDocument(quotationId),
+      throwsA(isA<InvalidUpgradeException>()),
+    );
+
+    final nextId = await harness.commands.createDocument(
+      DocumentType.salesOrder,
+    );
+    expect(
+      (await harness.documents.getDocument(nextId)).documentNumber,
+      'SO-2026-0002',
+    );
   });
 }

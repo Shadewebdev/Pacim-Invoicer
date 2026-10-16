@@ -5,6 +5,11 @@ import 'package:pacim_invoicer/domain/models/document_summary.dart';
 
 abstract interface class DocumentRepository {
   Stream<List<DocumentSummary>> watchDocumentSummaries(DocumentListQuery query);
+
+  /// How many documents match [query]'s type, search and date filters. Ignores
+  /// the sort and the `limit`.
+  Stream<int> watchDocumentCount(DocumentListQuery query);
+
   Future<BusinessDocument> getDocument(String documentId);
   Stream<BusinessDocument> watchDocument(String documentId);
   Stream<DocumentChain> watchDocumentChain(String chainId);

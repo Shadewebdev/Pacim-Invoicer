@@ -42,6 +42,15 @@ class DriftDocumentRepository implements DocumentRepository {
     );
   }
 
+  @override
+  Stream<int> watchDocumentCount(DocumentListQuery query) {
+    final countColumn = countAll();
+    final statement = _database.selectOnly(_database.documentRows)
+      ..addColumns([countColumn])
+      ..where(_matchesQuery(_database.documentRows, query));
+    return statement.watchSingle().map((row) => row.read(countColumn) ?? 0);
+  }
+
   Expression<bool> _matchesQuery(
     $DocumentRowsTable row,
     DocumentListQuery query,

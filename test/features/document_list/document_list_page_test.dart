@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pacim_invoicer/app/shell/status_bar_count_provider.dart';
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
 import 'package:pacim_invoicer/domain/models/business_document.dart';
 import 'package:pacim_invoicer/domain/models/customer_details.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
+import 'package:pacim_invoicer/features/document_list/document_list_controller.dart';
 import 'package:pacim_invoicer/features/document_list/document_list_page.dart';
 
 import '../../support/document_builders.dart';
@@ -18,6 +22,7 @@ BusinessDocument _document({
   required String customer,
   DocumentType type = DocumentType.quotation,
   DateTime? lockedAt,
+  DateTime? issueDate,
 }) {
   return buildTestDocument(
     type: type,
@@ -27,6 +32,7 @@ BusinessDocument _document({
   ).copyWith(
     documentNumber: number,
     customerDetails: CustomerDetails(customerName: customer),
+    issueDate: issueDate ?? DateTime.utc(2026, 10, 17),
   );
 }
 
@@ -34,6 +40,7 @@ Future<FakeDocumentRepository> pumpListPage(
   WidgetTester tester, {
   DocumentType type = DocumentType.quotation,
   List<BusinessDocument> seeded = const [],
+  FakeNumberSequenceRepository? sequences,
 }) async {
   tester.view.physicalSize = const Size(1200, 800);
   tester.view.devicePixelRatio = 1;
@@ -46,7 +53,7 @@ Future<FakeDocumentRepository> pumpListPage(
       overrides: [
         documentRepositoryProvider.overrideWithValue(documents),
         numberSequenceRepositoryProvider.overrideWithValue(
-          FakeNumberSequenceRepository(),
+          sequences ?? FakeNumberSequenceRepository(),
         ),
         settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
         clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
@@ -170,4 +177,92 @@ void main() {
     expect(find.text('Acme'), findsNothing);
     expect(find.text('Borneo'), findsOneWidget);
   });
+
+  group('with 60 quotations', () {
+    List<BusinessDocument> sixtyQuotations() => [
+      for (var day = 1; day <= 60; day++)
+        _document(
+          id: 'q$day',
+          number: 'QT-2026-${day.toString().padLeft(4, '0')}',
+          customer: 'Customer $day',
+          issueDate: DateTime.utc(2026, 1, 1).add(Duration(days: day)),
+        ),
+    ];
+
+    ProviderContainer containerOf(WidgetTester tester) =>
+        ProviderScope.containerOf(
+          tester.element(find.byType(DocumentListPage)),
+        );
+
+    testWidgets('scrolling to the bottom loads more once and keeps position', (
+      tester,
+    ) async {
+      await pumpListPage(tester, seeded: sixtyQuotations());
+      final listFinder = find.byType(ListView);
+      expect(find.text('QT-2026-0010'), findsNothing);
+
+      for (var attempt = 0; attempt < 6; attempt++) {
+        await tester.drag(listFinder, const Offset(0, -1500));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      final scrollable = tester.state<ScrollableState>(
+        find.descendant(of: listFinder, matching: find.byType(Scrollable)),
+      );
+      expect(scrollable.position.pixels, greaterThan(0));
+      final query = containerOf(tester)
+          .read(documentListControllerProvider(DocumentType.quotation));
+      expect(query.limit, 100);
+
+      await tester.drag(listFinder, const Offset(0, -3000));
+      await tester.pumpAndSettle();
+      expect(find.text('QT-2026-0001'), findsOneWidget);
+    });
+
+    testWidgets('status bar count is the total, not the loaded rows', (
+      tester,
+    ) async {
+      await pumpListPage(tester, seeded: sixtyQuotations());
+      expect(containerOf(tester).read(statusBarCountProvider), '60 quotations');
+    });
+  });
+
+  testWidgets('a double-click on New quotation creates only one document', (
+    tester,
+  ) async {
+    final sequences = _GatedNumberSequenceRepository();
+    final documents = await pumpListPage(tester, sequences: sequences);
+
+    final button = find.widgetWithText(FilledButton, 'New quotation').first;
+    await tester.tap(button);
+    await tester.tap(button);
+    sequences.release();
+    await tester.pumpAndSettle();
+
+    expect(documents.storedDocuments, hasLength(1));
+    expect(sequences.allocationCount, 1);
+  });
+}
+
+class _GatedNumberSequenceRepository extends FakeNumberSequenceRepository {
+  final Completer<void> _gate = Completer<void>();
+  int allocationCount = 0;
+
+  void release() => _gate.complete();
+
+  @override
+  Future<int> allocateNextSequence(
+    DocumentType type, {
+    required int year,
+    required bool resetsYearly,
+  }) async {
+    allocationCount++;
+    await _gate.future;
+    return super.allocateNextSequence(
+      type,
+      year: year,
+      resetsYearly: resetsYearly,
+    );
+  }
 }

@@ -37,6 +37,7 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
   late final StatusBarCountController _statusBarCount;
   Timer? _searchTimer;
   String? _shownCount;
+  bool _isCreating = false;
 
   DocumentType get _type => widget.documentType;
 
@@ -129,15 +130,23 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
     context.go('/documents/$documentId');
   }
 
-  Future<void> _createDocument() => _runCommand(
-    "Couldn't create the ${_type.displayName.toLowerCase()}. Try again.",
-    () async {
-      final documentId = await ref
-          .read(documentCommandsProvider)
-          .createDocument(_type);
-      _openDocument(documentId);
-    },
-  );
+  Future<void> _createDocument() async {
+    if (_isCreating) return;
+    _isCreating = true;
+    try {
+      await _runCommand(
+        "Couldn't create the ${_type.displayName.toLowerCase()}. Try again.",
+        () async {
+          final documentId = await ref
+              .read(documentCommandsProvider)
+              .createDocument(_type);
+          _openDocument(documentId);
+        },
+      );
+    } finally {
+      _isCreating = false;
+    }
+  }
 
   Future<void> _upgradeDocument(DocumentSummary summary) => _runCommand(
     "Couldn't upgrade ${summary.documentNumber}. Try again.",
@@ -209,15 +218,15 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
             .currencyFormat ??
         CurrencyFormat.defaultFormat;
 
-    ref.listen(documentSummariesProvider(_type), (previous, next) {
-      final summaries = next.value;
-      if (summaries != null) _showCount(summaries.length);
+    ref.listen(documentCountProvider(_type), (previous, next) {
+      final count = next.value;
+      if (count != null) _showCount(count);
     });
-    final loadedSummaries = summariesValue.value;
-    if (loadedSummaries != null && _shownCount == null) {
+    final totalCount = ref.watch(documentCountProvider(_type)).value;
+    if (totalCount != null && _shownCount == null) {
       // The first value can arrive before the listener is attached.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _showCount(loadedSummaries.length);
+        if (mounted) _showCount(totalCount);
       });
     }
 
@@ -255,6 +264,7 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
             Expanded(
               child: summariesValue.when(
                 skipLoadingOnRefresh: true,
+                skipLoadingOnReload: true,
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, stackTrace) => Center(
                   child: Text(
@@ -284,7 +294,7 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
                         .setSort(field),
                     onLoadMore: () => ref
                         .read(documentListControllerProvider(_type).notifier)
-                        .loadMore(),
+                        .loadMore(loadedCount: summaries.length),
                     onOpen: (summary) => _openDocument(summary.documentId),
                     onUpgrade: _upgradeDocument,
                     onDuplicate: _duplicateDocument,

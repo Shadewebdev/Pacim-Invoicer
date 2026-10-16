@@ -207,6 +207,32 @@ void runDocumentRepositoryContract(
       expect(ids, hasLength(2));
     });
 
+    test('watchDocumentCount counts all matches ignoring limit', () async {
+      for (final day in [1, 2, 3]) {
+        await repository.saveDocument(
+          documentWith(id: 'd$day', number: 'QT-2026-000$day'),
+        );
+      }
+      await repository.saveDocument(
+        documentWith(
+          id: 'so',
+          number: 'SO-2026-0001',
+          type: DocumentType.salesOrder,
+        ),
+      );
+      const limited = DocumentListQuery(
+        documentType: DocumentType.quotation,
+        limit: 2,
+      );
+      expect(await repository.watchDocumentCount(limited).first, 3);
+      expect(
+        await repository
+            .watchDocumentCount(limited.copyWith(searchText: '0002'))
+            .first,
+        1,
+      );
+    });
+
     test('summary grandTotalMinor matches DocumentTotalsCalculator', () async {
       final document = documentWith(id: 'a', unitPriceMinor: 1234);
       await repository.saveDocument(document);

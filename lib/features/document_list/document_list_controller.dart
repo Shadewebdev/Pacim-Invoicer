@@ -33,7 +33,13 @@ class DocumentListController extends Notifier<DocumentListQuery> {
     );
   }
 
-  void loadMore() => state = state.copyWith(limit: state.limit + _pageSize);
+  /// Grows the limit by one page, but only when [loadedCount] rows fill the
+  /// current limit, so repeated scroll events while a page is loading (or a
+  /// list that is already complete) change nothing.
+  void loadMore({required int loadedCount}) {
+    if (loadedCount < state.limit) return;
+    state = state.copyWith(limit: state.limit + _pageSize);
+  }
 }
 
 final documentListControllerProvider =
@@ -50,6 +56,15 @@ final documentSummariesProvider =
           .watch(documentRepositoryProvider)
           .watchDocumentSummaries(query);
     });
+
+/// How many documents match the listing's filters, whatever the page size.
+final documentCountProvider = StreamProvider.family<int, DocumentType>((
+  ref,
+  type,
+) {
+  final query = ref.watch(documentListControllerProvider(type));
+  return ref.watch(documentRepositoryProvider).watchDocumentCount(query);
+});
 
 /// The documents linked to a listed row, shown as chips in the chain column.
 final listedDocumentChainProvider =

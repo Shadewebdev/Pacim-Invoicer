@@ -124,18 +124,49 @@ class FakeDocumentRepository implements DocumentRepository {
     updatedAt: document.updatedAt,
   );
 
-  List<DocumentSummary> _summariesFor(DocumentListQuery query) {
+  List<DocumentSummary> _matchingSummaries(DocumentListQuery query) {
     final search = query.searchText.toLowerCase();
     return _documents.values
         .where((document) => document.documentType == query.documentType)
         .map(_summaryOf)
         .where(
           (summary) =>
-              search.isEmpty ||
-              summary.documentNumber.toLowerCase().contains(search) ||
-              summary.customerName.toLowerCase().contains(search),
+              (search.isEmpty ||
+                  summary.documentNumber.toLowerCase().contains(search) ||
+                  summary.customerName.toLowerCase().contains(search)) &&
+              (query.issuedFrom == null ||
+                  !summary.issueDate.isBefore(query.issuedFrom!)) &&
+              (query.issuedTo == null ||
+                  summary.issueDate.isBefore(
+                    DateTime(
+                      query.issuedTo!.year,
+                      query.issuedTo!.month,
+                      query.issuedTo!.day + 1,
+                    ),
+                  )),
         )
         .toList();
+  }
+
+  List<DocumentSummary> _summariesFor(DocumentListQuery query) {
+    int compare(DocumentSummary a, DocumentSummary b) {
+      final result = switch (query.sortField) {
+        DocumentSortField.documentNumber => a.documentNumber.compareTo(
+          b.documentNumber,
+        ),
+        DocumentSortField.customerName =>
+          a.customerName.toLowerCase().compareTo(b.customerName.toLowerCase()),
+        DocumentSortField.issueDate => a.issueDate.compareTo(b.issueDate),
+        DocumentSortField.grandTotal => a.grandTotalMinor.compareTo(
+          b.grandTotalMinor,
+        ),
+        DocumentSortField.updatedAt => a.updatedAt.compareTo(b.updatedAt),
+      };
+      return query.sortDescending ? -result : result;
+    }
+
+    final sorted = _matchingSummaries(query)..sort(compare);
+    return sorted.take(query.limit).toList();
   }
 
   DocumentChain _chainFor(String chainId) {
@@ -170,6 +201,12 @@ class FakeDocumentRepository implements DocumentRepository {
   ) => _watchValue(
     _changes.stream.map((_) => _summariesFor(query)),
     () => _summariesFor(query),
+  );
+
+  @override
+  Stream<int> watchDocumentCount(DocumentListQuery query) => _watchValue(
+    _changes.stream.map((_) => _matchingSummaries(query).length),
+    () => _matchingSummaries(query).length,
   );
 
   @override

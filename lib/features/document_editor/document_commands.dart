@@ -4,6 +4,7 @@ import '../../data/repositories/document_repository.dart';
 import '../../data/repositories/number_sequence_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../data/repository_providers.dart';
+import '../../domain/exceptions/document_exceptions.dart';
 import '../../domain/models/business_document.dart';
 import '../../domain/models/document_settings.dart';
 import '../../domain/models/document_type.dart';
@@ -53,6 +54,12 @@ class DocumentCommands {
     final chainDocuments = await documentRepository.getDocumentsInChain(
       source.chainId,
     );
+    final blocker = findUpgradeBlocker(
+      source: source,
+      chainDocuments: chainDocuments,
+    );
+    // Checked before allocating, so a refused upgrade burns no number.
+    if (blocker != null) throw InvalidUpgradeException(blocker);
     final settings = await _readSettings();
     final now = clock();
     final documentNumber = await _allocateDocumentNumber(

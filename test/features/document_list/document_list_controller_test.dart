@@ -31,9 +31,21 @@ void main() {
     expect(query.sortDescending, isFalse);
   });
 
-  test('loadMore adds 50 to the limit', () {
-    container.read(provider.notifier).loadMore();
+  test('loadMore adds 50 to the limit when every row is loaded', () {
+    container.read(provider.notifier).loadMore(loadedCount: 50);
     expect(container.read(provider).limit, 100);
+  });
+
+  test('loadMore does nothing while the last page is still loading', () {
+    final controller = container.read(provider.notifier);
+    controller.loadMore(loadedCount: 50);
+    controller.loadMore(loadedCount: 50);
+    expect(container.read(provider).limit, 100);
+  });
+
+  test('loadMore does nothing when fewer rows than the limit exist', () {
+    container.read(provider.notifier).loadMore(loadedCount: 12);
+    expect(container.read(provider).limit, 50);
   });
 
   test('setSearchText and setIssuedRange update the query', () {
