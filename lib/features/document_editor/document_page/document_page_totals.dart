@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/repository_providers.dart';
 import '../../../shared/formatting/money_formatter.dart';
 import '../../../shared/formatting/quantity_formatter.dart';
-import '../document_editor_controller.dart';
 import 'document_page_styles.dart';
+import 'watched_document.dart';
 
 /// Subtotal, discount, tax and total, right-aligned under the item table.
 class DocumentPageTotals extends ConsumerWidget {
@@ -15,10 +15,7 @@ class DocumentPageTotals extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final document = ref
-        .watch(documentEditorControllerProvider(documentId))
-        .requireValue
-        .document;
+    final document = watchEditedDocument(ref, documentId);
     final totals = ref
         .watch(documentTotalsCalculatorProvider)
         .calculate(document);

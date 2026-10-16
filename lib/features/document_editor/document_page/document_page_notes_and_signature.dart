@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../document_editor_controller.dart';
 import 'document_page_styles.dart';
+import 'watched_document.dart';
 import 'inline_text_field.dart';
 import 'page_image.dart';
 
@@ -14,11 +15,8 @@ class DocumentPageNotesAndSignature extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final editorState = ref
-        .watch(documentEditorControllerProvider(documentId))
-        .requireValue;
-    final document = editorState.document;
-    final isLocked = editorState.isLocked;
+    final document = watchEditedDocument(ref, documentId);
+    final isLocked = document.isLocked;
     final controller = ref.read(
       documentEditorControllerProvider(documentId).notifier,
     );

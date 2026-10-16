@@ -5,6 +5,7 @@ import '../../../domain/models/document_type.dart';
 import '../document_editor_controller.dart';
 import 'document_page_header.dart' show splitAddressLines;
 import 'document_page_styles.dart';
+import 'watched_document.dart';
 import 'inline_text_field.dart';
 
 /// The customer block: who the document is for, and where a delivery goes.
@@ -15,11 +16,8 @@ class DocumentPageCustomer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final editorState = ref
-        .watch(documentEditorControllerProvider(documentId))
-        .requireValue;
-    final document = editorState.document;
-    final isLocked = editorState.isLocked;
+    final document = watchEditedDocument(ref, documentId);
+    final isLocked = document.isLocked;
     final controller = ref.read(
       documentEditorControllerProvider(documentId).notifier,
     );

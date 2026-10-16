@@ -5,8 +5,10 @@ import '../../../app/theme/document_type_colors.dart';
 import '../../../domain/models/business_document.dart';
 import '../../../domain/models/document_type.dart';
 import '../../../shared/formatting/date_formatter.dart';
+import '../../../data/repository_providers.dart';
 import '../document_editor_controller.dart';
 import 'document_page_styles.dart';
+import 'watched_document.dart';
 import 'inline_text_field.dart';
 import 'page_image.dart';
 
@@ -18,11 +20,8 @@ class DocumentPageHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final editorState = ref
-        .watch(documentEditorControllerProvider(documentId))
-        .requireValue;
-    final document = editorState.document;
-    final isLocked = editorState.isLocked;
+    final document = watchEditedDocument(ref, documentId);
+    final isLocked = document.isLocked;
     final controller = ref.read(
       documentEditorControllerProvider(documentId).notifier,
     );
@@ -223,7 +222,7 @@ class _LabelledRow extends StatelessWidget {
   }
 }
 
-class _DateField extends StatelessWidget {
+class _DateField extends ConsumerWidget {
   const _DateField({
     required this.date,
     required this.isLocked,
@@ -235,10 +234,10 @@ class _DateField extends StatelessWidget {
   final bool isLocked;
   final ValueChanged<DateTime?> onChanged;
 
-  Future<void> _pick(BuildContext context) async {
+  Future<void> _pick(BuildContext context, DateTime now) async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: date ?? DateTime.now(),
+      initialDate: date ?? now,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
@@ -246,7 +245,7 @@ class _DateField extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final label = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       child: Align(
@@ -261,7 +260,7 @@ class _DateField extends StatelessWidget {
     );
     if (isLocked) return label;
     return InkWell(
-      onTap: () => _pick(context),
+      onTap: () => _pick(context, ref.read(clockProvider)()),
       borderRadius: BorderRadius.circular(2),
       child: label,
     );

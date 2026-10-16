@@ -30,10 +30,10 @@ class DocumentPageView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final document = ref
-        .watch(documentEditorControllerProvider(documentId))
-        .value
-        ?.document;
+    final document = ref.watch(
+      documentEditorControllerProvider(documentId)
+          .select((state) => state.value?.document),
+    );
     // Until the document loads, hold the page's footprint so nothing jumps.
     if (document == null) {
       return SizedBox(width: pageWidth, height: pageHeight);
@@ -76,30 +76,38 @@ class DocumentPageView extends ConsumerWidget {
                 ),
                 Padding(
                   padding: EdgeInsets.all(margin),
-                  child: IntrinsicHeight(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: pageHeight - 2 * margin,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          DocumentPageHeader(documentId: documentId),
-                          const SizedBox(height: 28),
-                          DocumentPageCustomer(documentId: documentId),
-                          const SizedBox(height: 24),
-                          LineItemGridSlot(documentId: documentId),
-                          if (document.documentType.showsPricing) ...[
-                            const SizedBox(height: 16),
-                            DocumentPageTotals(documentId: documentId),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: pageHeight - 2 * margin,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            DocumentPageHeader(documentId: documentId),
+                            const SizedBox(height: 28),
+                            DocumentPageCustomer(documentId: documentId),
+                            const SizedBox(height: 24),
+                            LineItemGridSlot(documentId: documentId),
+                            if (document.documentType.showsPricing) ...[
+                              const SizedBox(height: 16),
+                              DocumentPageTotals(documentId: documentId),
+                            ],
+                            const SizedBox(height: 28),
+                            DocumentPageNotesAndSignature(
+                              documentId: documentId,
+                            ),
                           ],
-                          const SizedBox(height: 28),
-                          DocumentPageNotesAndSignature(documentId: documentId),
-                          const Spacer(),
-                          const SizedBox(height: 24),
-                          DocumentPageFooter(documentId: documentId),
-                        ],
-                      ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 24),
+                          child: DocumentPageFooter(documentId: documentId),
+                        ),
+                      ],
                     ),
                   ),
                 ),

@@ -15,6 +15,7 @@ import '../../support/document_builders.dart';
 import '../../support/fake_repositories.dart';
 
 late ProviderContainer _container;
+late FakeDocumentRepository _documents;
 
 Future<void> _pump(
   WidgetTester tester,
@@ -26,7 +27,7 @@ Future<void> _pump(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final documents = FakeDocumentRepository();
+  final documents = _documents = FakeDocumentRepository();
   if (seeded != null) documents.seed(seeded);
   _container = ProviderContainer(
     retry: (_, _) => null,
@@ -187,5 +188,38 @@ void main() {
     expect(_container.read(pageZoomProvider), 0.5);
     notifier.zoomBySteps(1);
     expect(_container.read(pageZoomProvider), closeTo(0.6, 1e-9));
+  });
+  testWidgets('footer is pinned to the bottom of a short page', (tester) async {
+    final document = buildTestDocument(lineItems: [buildTestLine()]);
+    await _pumpPage(tester, document);
+    final footer = tester.getBottomLeft(find.text('Page 1 of 1')).dy;
+    final page = tester.getRect(find.byType(DocumentPageView));
+    expect(page.height, closeTo(DocumentPageView.pageHeight, 0.5));
+    // The footer sits within the bottom margin of the A4 page.
+    expect(page.bottom - footer, lessThan(100));
+  });
+
+  testWidgets('Save commits the text of a focused field before saving', (
+    tester,
+  ) async {
+    final document = buildTestDocument();
+    await _pump(
+      tester,
+      SizedBox(
+        width: 1400,
+        height: 900,
+        child: DocumentEditorPage(documentId: document.documentId),
+      ),
+      document,
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('customerName')),
+      'Typed Not Blurred',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    final stored = _documents.storedDocuments.single;
+    expect(stored.customerDetails.customerName, 'Typed Not Blurred');
+    expect(_documents.saveCount, greaterThan(0));
   });
 }

@@ -38,10 +38,15 @@ class _InlineTextFieldState extends State<InlineTextField> {
   late final FocusNode _focusNode;
   bool _isHovered = false;
 
+  /// The text last handed to onCommitted (or the initial value), so Enter
+  /// followed by blur commits once.
+  late String _lastCommittedText;
+
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.value);
+    _lastCommittedText = widget.value;
     _focusNode = FocusNode()..addListener(_onFocusChanged);
   }
 
@@ -50,11 +55,14 @@ class _InlineTextFieldState extends State<InlineTextField> {
     super.didUpdateWidget(oldWidget);
     if (!_focusNode.hasFocus && _controller.text != widget.value) {
       _controller.text = widget.value;
+      _lastCommittedText = widget.value;
     }
   }
 
   @override
   void dispose() {
+    // Navigating away or removing a focused field must not drop typed text.
+    _commit();
     _focusNode
       ..removeListener(_onFocusChanged)
       ..dispose();
@@ -69,7 +77,8 @@ class _InlineTextFieldState extends State<InlineTextField> {
 
   void _commit() {
     if (widget.readOnly) return;
-    if (_controller.text != widget.value) {
+    if (_controller.text != _lastCommittedText) {
+      _lastCommittedText = _controller.text;
       widget.onCommitted(_controller.text);
     }
   }
@@ -132,7 +141,7 @@ class _InlineTextFieldState extends State<InlineTextField> {
               horizontal: 3,
               vertical: 2,
             ),
-            hintText: widget.placeholder,
+            hintText: isEditable ? widget.placeholder : null,
             hintStyle: baseStyle.copyWith(
               color: pageInk.withValues(alpha: 0.32),
             ),

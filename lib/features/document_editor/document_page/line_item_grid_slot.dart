@@ -6,9 +6,9 @@ import '../../../domain/models/line_item.dart';
 import '../../../shared/document_page_metrics.dart';
 import '../../../shared/formatting/money_formatter.dart';
 import '../../../shared/formatting/quantity_formatter.dart';
-import '../document_editor_controller.dart';
 import '../../../data/repository_providers.dart';
 import 'document_page_styles.dart';
+import 'watched_document.dart';
 
 /// The seam where the keyboard-editable item grid plugs in (Task 18).
 /// For now it is a read-only table following [DocumentPageMetrics.visibleColumns].
@@ -19,10 +19,7 @@ class LineItemGridSlot extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final document = ref
-        .watch(documentEditorControllerProvider(documentId))
-        .requireValue
-        .document;
+    final document = watchEditedDocument(ref, documentId);
     final totals = ref
         .watch(documentTotalsCalculatorProvider)
         .calculate(document);

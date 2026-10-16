@@ -144,9 +144,16 @@ class _CommandBar extends ConsumerWidget {
                       Tooltip(
                         message: state.isLocked
                             ? 'Locked documents cannot be changed'
-                            : 'Save now (Ctrl+S)',
+                            : 'Save now',
                         child: FilledButton(
-                          onPressed: state.isLocked ? null : controller.saveNow,
+                          onPressed: state.isLocked
+                              ? null
+                              : () async {
+                                  // Blur first so a field being typed in commits.
+                                  FocusManager.instance.primaryFocus?.unfocus();
+                                  await Future<void>.delayed(Duration.zero);
+                                  await controller.saveNow();
+                                },
                           child: const Text('Save'),
                         ),
                       ),
@@ -155,8 +162,7 @@ class _CommandBar extends ConsumerWidget {
                         _DisabledAction(
                           label:
                               'Upgrade to ${nextStage.displayName.toLowerCase()}',
-                          tooltip:
-                              'Upgrade (Ctrl+Shift+U) is not available yet',
+                          tooltip: 'Upgrade is not available yet',
                         ),
                       const _DisabledAction(
                         label: 'Duplicate',
@@ -164,7 +170,7 @@ class _CommandBar extends ConsumerWidget {
                       ),
                       const _DisabledAction(
                         label: 'Export PDF',
-                        tooltip: 'Export PDF (Ctrl+P) is not available yet',
+                        tooltip: 'Export PDF is not available yet',
                       ),
                       const _DisabledAction(
                         label: 'Print',
