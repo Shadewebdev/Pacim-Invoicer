@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../app_router.dart';
 import '../theme/app_color_tokens.dart';
+import 'status_bar_message_provider.dart';
 
 class StatusBar extends ConsumerWidget {
   const StatusBar({super.key});

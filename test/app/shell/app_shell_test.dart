@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pacim_invoicer/app/app_router.dart';
 import 'package:pacim_invoicer/app/pacim_invoicer_app.dart';
+import 'package:pacim_invoicer/app/shell/status_bar_message_provider.dart';
 
 Future<ProviderContainer> pumpApp(WidgetTester tester, Size size) async {
   tester.view.physicalSize = size;
@@ -78,5 +79,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(currentPath(container), '/sales-orders');
     expect(find.text('Delivery orders'), findsNothing);
+  });
+
+  testWidgets('status bar shows the status bar message', (tester) async {
+    final container = await pumpApp(tester, wide);
+    container.read(statusBarMessageProvider.notifier).showMessage('Saved');
+    await tester.pump();
+    expect(find.text('Saved'), findsOneWidget);
   });
 }

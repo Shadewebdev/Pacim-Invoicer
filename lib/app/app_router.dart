@@ -1,33 +1,9 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../domain/models/document_type.dart';
 import 'shell/app_shell.dart';
 import 'shell/placeholder_pages.dart';
-
-class ThemeModeController extends Notifier<ThemeMode> {
-  @override
-  ThemeMode build() => ThemeMode.system;
-
-  void setThemeMode(ThemeMode themeMode) => state = themeMode;
-}
-
-final themeModeProvider = NotifierProvider<ThemeModeController, ThemeMode>(
-  ThemeModeController.new,
-);
-
-class StatusBarMessageController extends Notifier<String?> {
-  @override
-  String? build() => null;
-
-  void showMessage(String? message) => state = message;
-}
-
-final statusBarMessageProvider =
-    NotifierProvider<StatusBarMessageController, String?>(
-      StatusBarMessageController.new,
-    );
 
 const _defaultLocation = '/quotations';
 
