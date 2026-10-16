@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../features/settings/settings_controller.dart';
 import 'app_router.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_mode_provider.dart';
@@ -11,6 +12,8 @@ class PacimInvoicerApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Loading the settings applies the saved appearance to themeModeProvider.
+    ref.watch(settingsControllerProvider);
     final platform = defaultTargetPlatform;
     return MaterialApp.router(
       title: 'Pacim Invoicer',

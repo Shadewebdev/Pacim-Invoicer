@@ -1,0 +1,155 @@
+import 'package:flutter/material.dart';
+
+import '../../../app/theme/app_typography.dart';
+import '../../../domain/models/currency_format.dart';
+import '../../../domain/models/document_settings.dart';
+import '../../../domain/models/pricing_terms.dart';
+import '../../../shared/formatting/money_formatter.dart';
+import '../../../shared/formatting/number_input_parser.dart';
+import '../settings_controller.dart';
+import '../settings_fields.dart';
+
+const int _maximumDecimalPlaces = 3;
+const int _maximumTaxRatePercentScaled = 10000;
+
+class PricingSettingsSection extends StatelessWidget {
+  const PricingSettingsSection({
+    required this.settings,
+    required this.controller,
+    super.key,
+  });
+
+  final DocumentSettings settings;
+  final SettingsController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final pricing = settings.pricingTerms;
+    final currency = pricing.currencyFormat;
+    void editPricing(PricingTerms changed) =>
+        controller.updatePricingTerms(changed);
+    void editCurrency(CurrencyFormat changed) =>
+        editPricing(pricing.copyWith(currencyFormat: changed));
+
+    return SettingsSectionLayout(
+      title: 'Pricing & currency',
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SettingsTextField(
+                label: 'Currency code',
+                value: currency.currencyCode,
+                onChanged: (value) =>
+                    editCurrency(currency.copyWith(currencyCode: value)),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: SettingsTextField(
+                label: 'Symbol',
+                value: currency.symbol,
+                onChanged: (value) =>
+                    editCurrency(currency.copyWith(symbol: value)),
+              ),
+            ),
+          ],
+        ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SettingsTextField(
+                label: 'Thousands separator',
+                value: currency.thousandsSeparator,
+                onChanged: (value) =>
+                    editCurrency(currency.copyWith(thousandsSeparator: value)),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: SettingsTextField(
+                label: 'Decimal separator',
+                value: currency.decimalSeparator,
+                onChanged: (value) =>
+                    editCurrency(currency.copyWith(decimalSeparator: value)),
+              ),
+            ),
+          ],
+        ),
+        SettingsParsedField<int>(
+          label: 'Decimal places',
+          initialText: currency.decimalPlaces.toString(),
+          errorText: 'Enter a number from 0 to $_maximumDecimalPlaces',
+          parse: (text) {
+            final places = int.tryParse(text.trim());
+            if (places == null ||
+                places < 0 ||
+                places > _maximumDecimalPlaces) {
+              return null;
+            }
+            return places;
+          },
+          onParsed: (places) =>
+              editCurrency(currency.copyWith(decimalPlaces: places)),
+        ),
+        SegmentedButton<CurrencySymbolPosition>(
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(
+              value: CurrencySymbolPosition.before,
+              label: Text('Symbol before amount'),
+            ),
+            ButtonSegment(
+              value: CurrencySymbolPosition.after,
+              label: Text('Symbol after amount'),
+            ),
+          ],
+          selected: {currency.symbolPosition},
+          onSelectionChanged: (selection) =>
+              editCurrency(currency.copyWith(symbolPosition: selection.single)),
+        ),
+        Text(
+          'Example: ${formatMoney(123456, currency)}',
+          style: const TextStyle(fontSize: AppTypography.body),
+        ),
+        SettingsToggleRow(
+          label: 'Charge tax on new documents',
+          value: pricing.isTaxEnabled,
+          onChanged: (value) =>
+              editPricing(pricing.copyWith(isTaxEnabled: value)),
+        ),
+        SettingsTextField(
+          label: 'Tax label',
+          value: pricing.taxLabel,
+          onChanged: (value) => editPricing(pricing.copyWith(taxLabel: value)),
+        ),
+        SettingsParsedField<int>(
+          label: 'Tax rate (%)',
+          initialText: _formatPercentScaled(pricing.taxRatePercentScaled),
+          parse: (text) {
+            final scaled = parsePercentInput(text);
+            if (scaled == null ||
+                scaled < 0 ||
+                scaled > _maximumTaxRatePercentScaled) {
+              return null;
+            }
+            return scaled;
+          },
+          onParsed: (scaled) =>
+              editPricing(pricing.copyWith(taxRatePercentScaled: scaled)),
+        ),
+      ],
+    );
+  }
+}
+
+/// 800 becomes `8` and 850 becomes `8.5`.
+String _formatPercentScaled(int percentScaled) {
+  final whole = percentScaled ~/ 100;
+  final fraction = percentScaled % 100;
+  if (fraction == 0) return '$whole';
+  final fractionText = fraction.toString().padLeft(2, '0');
+  return '$whole.${fractionText.replaceFirst(RegExp(r'0$'), '')}';
+}

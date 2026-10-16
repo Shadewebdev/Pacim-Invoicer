@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../domain/models/document_type.dart';
 import 'shell/app_shell.dart';
+import '../features/settings/settings_page.dart';
 import 'shell/placeholder_pages.dart';
 
 const _defaultLocation = '/quotations';

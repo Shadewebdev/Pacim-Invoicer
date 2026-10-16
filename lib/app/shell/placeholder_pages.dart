@@ -23,12 +23,3 @@ class DocumentEditorPage extends StatelessWidget {
   Widget build(BuildContext context) =>
       Center(child: Text('Document $documentId'));
 }
-
-/// Replaced by the real settings page in a later task.
-class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) =>
-      const Center(child: Text('Settings page'));
-}
