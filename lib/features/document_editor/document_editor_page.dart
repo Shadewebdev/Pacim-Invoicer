@@ -1,19 +1,23 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/shell/navigation_leave_guard.dart';
 import '../../app/theme/app_color_tokens.dart';
 import '../../app/theme/app_typography.dart';
 import '../../domain/exceptions/document_exceptions.dart';
+import '../../domain/models/business_document.dart';
 import '../../domain/models/document_type.dart';
 import 'document_editor_controller.dart';
 import 'document_editor_state.dart';
 import 'document_page/document_canvas.dart';
 import 'document_page/document_page_view.dart';
 import 'document_page/page_zoom_provider.dart';
-import 'created_from_document_provider.dart';
+import 'chain_breadcrumb/chain_breadcrumb.dart';
+import 'chain_breadcrumb/document_chain_provider.dart';
+import 'document_editor_actions.dart';
 import 'locked_document_banner.dart';
 import 'properties_pane/properties_pane.dart';
 import 'unsaved_changes_guard.dart';
@@ -44,6 +48,12 @@ class _DocumentEditorPageState extends ConsumerState<DocumentEditorPage> {
   DocumentType? _lastKnownType;
 
   bool _isPropertiesPaneOpen = true;
+
+  late final DocumentEditorActions _actions = DocumentEditorActions(
+    context: context,
+    ref: ref,
+    currentDocumentId: () => widget.documentId,
+  );
 
   void _fitWidth() {
     if (_canvasWidth <= 0) return;
@@ -76,78 +86,100 @@ class _DocumentEditorPageState extends ConsumerState<DocumentEditorPage> {
 
     return UnsavedChangesGuard(
       documentId: widget.documentId,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final fitsPaneBesidePage =
-              constraints.maxWidth >= _propertiesPaneMinimumWindowWidth;
-          final showsPropertiesPane =
-              fitsPaneBesidePage && _isPropertiesPaneOpen;
-          return Column(
-            children: [
-              _CommandBar(
-                documentId: widget.documentId,
-                state: value,
-                onFitWidth: _fitWidth,
-                propertiesButtonLabel: !fitsPaneBesidePage
-                    ? 'Properties'
-                    : _isPropertiesPaneOpen
-                    ? 'Hide properties'
-                    : 'Show properties',
-                onPropertiesPressed: fitsPaneBesidePage
-                    ? () => setState(
-                        () => _isPropertiesPaneOpen = !_isPropertiesPaneOpen,
-                      )
-                    : _openPropertiesSheet,
-              ),
-              if (value.isLocked) _buildLockedBanner(value),
-              // Task 20 fills this with the document chain breadcrumb.
-              const SizedBox(
-                key: ValueKey('breadcrumbSlot'),
-                height: _breadcrumbHeight,
-                width: double.infinity,
-              ),
-              Expanded(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: DocumentCanvas(
-                        documentId: widget.documentId,
-                        onViewportWidthChanged: (width) => _canvasWidth = width,
-                      ),
-                    ),
-                    if (showsPropertiesPane)
-                      SizedBox(
-                        key: const ValueKey('propertiesPane'),
-                        width: propertiesPaneWidth,
-                        child: PropertiesPane(documentId: widget.documentId),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          );
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.keyS, control: true): () =>
+              unawaited(_actions.save()),
+          const SingleActivator(
+            LogicalKeyboardKey.keyU,
+            control: true,
+            shift: true,
+          ): () =>
+              unawaited(_actions.upgradeCurrent()),
+          const SingleActivator(LogicalKeyboardKey.keyN, control: true): () =>
+              unawaited(_actions.createSameType()),
         },
+        // Takes focus when nothing else has it, so shortcuts always work.
+        child: Focus(
+          autofocus: true,
+          skipTraversal: true,
+          child: LayoutBuilder(
+            builder: (context, constraints) =>
+                _buildEditor(value, constraints.maxWidth),
+          ),
+        ),
       ),
     );
   }
 
+  Widget _buildEditor(DocumentEditorState value, double maxWidth) {
+    final fitsPaneBesidePage = maxWidth >= _propertiesPaneMinimumWindowWidth;
+    final showsPropertiesPane = fitsPaneBesidePage && _isPropertiesPaneOpen;
+    final upgradeBlocker = ref.watch(
+      upgradeBlockerProvider((
+        documentId: value.document.documentId,
+        chainId: value.document.chainId,
+      )),
+    );
+    return Column(
+      children: [
+        _CommandBar(
+          documentId: widget.documentId,
+          state: value,
+          actions: _actions,
+          upgradeBlocker: upgradeBlocker,
+          onFitWidth: _fitWidth,
+          propertiesButtonLabel: !fitsPaneBesidePage
+              ? 'Properties'
+              : _isPropertiesPaneOpen
+              ? 'Hide properties'
+              : 'Show properties',
+          onPropertiesPressed: fitsPaneBesidePage
+              ? () => setState(
+                  () => _isPropertiesPaneOpen = !_isPropertiesPaneOpen,
+                )
+              : _openPropertiesSheet,
+        ),
+        if (value.isLocked) _buildLockedBanner(value),
+        _BreadcrumbBar(
+          key: const ValueKey('breadcrumbSlot'),
+          document: value.document,
+          actions: _actions,
+        ),
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(
+                child: DocumentCanvas(
+                  documentId: widget.documentId,
+                  onViewportWidthChanged: (width) => _canvasWidth = width,
+                ),
+              ),
+              if (showsPropertiesPane)
+                SizedBox(
+                  key: const ValueKey('propertiesPane'),
+                  width: propertiesPaneWidth,
+                  child: PropertiesPane(documentId: widget.documentId),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildLockedBanner(DocumentEditorState value) {
-    final createdFrom = ref
-        .watch(
-          createdFromDocumentProvider((
-            documentId: value.document.documentId,
-            chainId: value.document.chainId,
-          )),
-        )
+    final chain = ref
+        .watch(documentChainProvider(value.document.chainId))
         .value;
     return LockedDocumentBanner(
       document: value.document,
-      createdFrom: createdFrom,
-      // Task 20 wires "Duplicate as new draft".
-      onDuplicateAsNewDraft: null,
-      onOpenCreatedDocument: (summary) => unawaited(
-        goAfterLeaveGuard(context, ref, '/documents/${summary.documentId}'),
-      ),
+      createdFrom: chain == null
+          ? null
+          : documentCreatedFrom(chain, value.document.documentId),
+      onDuplicateAsNewDraft: () => unawaited(_actions.duplicate()),
+      onOpenCreatedDocument: (summary) =>
+          unawaited(_actions.open(summary.documentId)),
     );
   }
 
@@ -170,6 +202,8 @@ class _CommandBar extends ConsumerWidget {
   const _CommandBar({
     required this.documentId,
     required this.state,
+    required this.actions,
+    required this.upgradeBlocker,
     required this.onFitWidth,
     required this.propertiesButtonLabel,
     required this.onPropertiesPressed,
@@ -177,6 +211,10 @@ class _CommandBar extends ConsumerWidget {
 
   final String documentId;
   final DocumentEditorState state;
+  final DocumentEditorActions actions;
+
+  /// Why the document cannot be upgraded; data of null means it can be.
+  final AsyncValue<String?> upgradeBlocker;
   final VoidCallback onFitWidth;
   final String propertiesButtonLabel;
   final VoidCallback onPropertiesPressed;
@@ -189,6 +227,9 @@ class _CommandBar extends ConsumerWidget {
     final controller = ref.read(
       documentEditorControllerProvider(documentId).notifier,
     );
+    final blockerReason = upgradeBlocker.value;
+    final canUpgrade = upgradeBlocker.hasValue && blockerReason == null;
+    final upgradeLabel = 'Upgrade to ${nextStage?.displayName.toLowerCase()}';
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -209,35 +250,40 @@ class _CommandBar extends ConsumerWidget {
                       Tooltip(
                         message: state.isLocked
                             ? 'Locked documents cannot be changed'
-                            : 'Save now',
+                            : 'Save (Ctrl+S)',
                         child: FilledButton(
                           onPressed: state.isLocked
                               ? null
-                              : () async {
-                                  // Blur first so a field being typed in commits.
-                                  FocusManager.instance.primaryFocus?.unfocus();
-                                  await Future<void>.delayed(Duration.zero);
-                                  await controller.saveNow();
-                                },
+                              : () => unawaited(actions.save()),
                           child: const Text('Save'),
                         ),
                       ),
                       const SizedBox(width: 8),
                       if (nextStage != null)
-                        _DisabledAction(
-                          label:
-                              'Upgrade to ${nextStage.displayName.toLowerCase()}',
-                          tooltip: 'Upgrade is not available yet',
+                        _CommandButton(
+                          label: upgradeLabel,
+                          tooltip:
+                              blockerReason ?? '$upgradeLabel (Ctrl+Shift+U)',
+                          onPressed: canUpgrade
+                              ? () => unawaited(actions.upgradeCurrent())
+                              : null,
                         ),
-                      const _DisabledAction(
+                      _CommandButton(
                         label: 'Duplicate',
-                        tooltip: 'Duplicate is not available yet',
+                        tooltip: 'Duplicate as new draft',
+                        onPressed: () => unawaited(actions.duplicate()),
                       ),
-                      const _DisabledAction(
+                      if (!state.isLocked)
+                        _CommandButton(
+                          label: 'Delete',
+                          tooltip: 'Delete this draft',
+                          onPressed: () => unawaited(actions.delete()),
+                        ),
+                      const _CommandButton(
                         label: 'Export PDF',
                         tooltip: 'Export PDF is not available yet',
                       ),
-                      const _DisabledAction(
+                      const _CommandButton(
                         label: 'Print',
                         tooltip: 'Print is not available yet',
                       ),
@@ -272,11 +318,68 @@ class _CommandBar extends ConsumerWidget {
   }
 }
 
-class _DisabledAction extends StatelessWidget {
-  const _DisabledAction({required this.label, required this.tooltip});
+/// The chain breadcrumb, with the "+" chip offered only when the next stage
+/// can be created.
+class _BreadcrumbBar extends ConsumerWidget {
+  const _BreadcrumbBar({
+    required this.document,
+    required this.actions,
+    super.key,
+  });
+
+  final BusinessDocument document;
+  final DocumentEditorActions actions;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chain = ref.watch(documentChainProvider(document.chainId)).value;
+    final upgradeSource = chain == null ? null : upgradeSourceFor(chain);
+    final blocker = upgradeSource == null
+        ? null
+        : ref.watch(
+            upgradeBlockerProvider((
+              documentId: upgradeSource.documentId,
+              chainId: document.chainId,
+            )),
+          );
+    final canUpgrade =
+        blocker != null && blocker.hasValue && blocker.value == null;
+    return SizedBox(
+      height: _breadcrumbHeight,
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: chain == null
+              ? null
+              : ChainBreadcrumb(
+                  chain: chain,
+                  currentDocumentId: document.documentId,
+                  onOpenDocument: (documentId) =>
+                      unawaited(actions.open(documentId)),
+                  onUpgrade: canUpgrade
+                      ? (sourceId) => unawaited(actions.upgrade(sourceId))
+                      : null,
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CommandButton extends StatelessWidget {
+  const _CommandButton({
+    required this.label,
+    required this.tooltip,
+    this.onPressed,
+  });
 
   final String label;
   final String tooltip;
+
+  /// Null shows the button disabled.
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -284,7 +387,7 @@ class _DisabledAction extends StatelessWidget {
       padding: const EdgeInsets.only(right: 4),
       child: Tooltip(
         message: tooltip,
-        child: TextButton(onPressed: null, child: Text(label)),
+        child: TextButton(onPressed: onPressed, child: Text(label)),
       ),
     );
   }

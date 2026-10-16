@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../app/shell/navigation_leave_guard.dart';
+import '../../app/shell/status_bar_message_provider.dart';
 import 'document_editor_controller.dart';
 import 'document_editor_state.dart';
 
@@ -92,6 +93,9 @@ final windowCloseInterceptorProvider = Provider<WindowCloseInterceptor?>(
 /// The most save attempts made for one leave request before staying put.
 const int _maximumSaveAttempts = 3;
 
+const String _saveCapReachedMessage =
+    "Couldn't save. Your changes are still here.";
+
 /// Wraps the editor so that leaving it (back, closing the window or choosing
 /// another destination) never silently loses edits.
 ///
@@ -124,6 +128,9 @@ class _UnsavedChangesGuardState extends ConsumerState<UnsavedChangesGuard> {
 
   /// True once the person agreed to leave, so the next pop goes through.
   bool _mayPop = false;
+
+  /// The leave check being run, so a second request shares its outcome.
+  Future<bool>? _leavingCheckInFlight;
 
   @override
   void initState() {
@@ -181,14 +188,22 @@ class _UnsavedChangesGuardState extends ConsumerState<UnsavedChangesGuard> {
 
   /// Saves pending edits and returns true when it is fine to leave: nothing
   /// is unsaved, or the person chose to leave without saving.
-  Future<bool> _confirmLeaving() async {
+  Future<bool> _confirmLeaving() => _leavingCheckInFlight ??= _runLeavingCheck()
+      .whenComplete(() => _leavingCheckInFlight = null);
+
+  Future<bool> _runLeavingCheck() async {
     await _commitFocusedField();
     var saveAttempts = 0;
     while (true) {
       final status = _saveStatus;
       if (status == SaveStatus.pending || status == SaveStatus.saving) {
         // A save that keeps leaving edits unsaved is not worth waiting for.
-        if (saveAttempts++ >= _maximumSaveAttempts) return false;
+        if (saveAttempts++ >= _maximumSaveAttempts) {
+          ref
+              .read(statusBarMessageProvider.notifier)
+              .showMessage(_saveCapReachedMessage);
+          return false;
+        }
         await _controller.saveNow();
         continue;
       }

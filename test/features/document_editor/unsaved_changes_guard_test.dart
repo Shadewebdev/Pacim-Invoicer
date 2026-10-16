@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pacim_invoicer/app/app_router.dart';
 import 'package:pacim_invoicer/app/pacim_invoicer_app.dart';
+import 'package:pacim_invoicer/app/shell/navigation_leave_guard.dart';
+import 'package:pacim_invoicer/app/shell/status_bar_message_provider.dart';
+import 'package:pacim_invoicer/domain/models/business_document.dart';
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
 import 'package:pacim_invoicer/features/document_editor/document_editor_controller.dart';
@@ -46,8 +49,12 @@ late FakeDocumentRepository _documents;
 late _FakeWindowCloseInterceptor _window;
 
 /// Opens the guarded editor on top of a home page, so it can be popped.
-Future<void> _pumpGuardedEditor(WidgetTester tester) async {
-  _documents = FakeDocumentRepository()..seed(buildTestDocument());
+Future<void> _pumpGuardedEditor(
+  WidgetTester tester, {
+  FakeDocumentRepository? repository,
+}) async {
+  _documents = repository ?? FakeDocumentRepository();
+  _documents.seed(buildTestDocument());
   _window = _FakeWindowCloseInterceptor();
   _container = ProviderContainer(
     retry: (_, _) => null,
@@ -113,7 +120,58 @@ Future<void> _makeEditWithFailedSave(WidgetTester tester) async {
   expect(_saveStatus, SaveStatus.failed);
 }
 
+/// Every save is followed by another edit, so the editor never settles.
+class _EditsAfterEverySaveRepository extends FakeDocumentRepository {
+  int editCount = 0;
+
+  @override
+  Future<void> saveDocument(BusinessDocument document) async {
+    await super.saveDocument(document);
+    _controller.updateNotes('edit ${editCount++}');
+  }
+}
+
 void main() {
+  testWidgets('hitting the save attempt cap reports it in the status bar', (
+    tester,
+  ) async {
+    await _pumpGuardedEditor(
+      tester,
+      repository: _EditsAfterEverySaveRepository(),
+    );
+    _controller.updateNotes('edited');
+
+    await _tryToLeave(tester);
+
+    expect(find.text('editor body'), findsOneWidget);
+    expect(
+      _container.read(statusBarMessageProvider),
+      "Couldn't save. Your changes are still here.",
+    );
+    // Stops the autosave timer the last edit started.
+    _controller.discardPendingChanges();
+  });
+
+  testWidgets('a second leave request while one is open shares its dialog', (
+    tester,
+  ) async {
+    await _pumpGuardedEditor(tester);
+    await _makeEditWithFailedSave(tester);
+    final registry = _container.read(navigationLeaveGuardProvider);
+
+    final first = registry.confirmLeaving();
+    final second = registry.confirmLeaving();
+    await tester.pumpAndSettle();
+    expect(find.text('Save changes before leaving?'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(await first, isFalse);
+    expect(await second, isFalse);
+    expect(find.text('Save changes before leaving?'), findsNothing);
+  });
+
   testWidgets('leaving with pending edits saves before navigating', (
     tester,
   ) async {
