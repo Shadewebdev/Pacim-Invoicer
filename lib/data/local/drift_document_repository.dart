@@ -183,7 +183,7 @@ class DriftDocumentRepository implements DocumentRepository {
   Future<void> saveUpgrade({
     required BusinessDocument lockedSource,
     required BusinessDocument createdDocument,
-  }) {
+  }) async {
     if (lockedSource.lockedAt == null) {
       throw ArgumentError.value(
         lockedSource.documentId,
@@ -196,6 +196,13 @@ class DriftDocumentRepository implements DocumentRepository {
         createdDocument.sourceDocumentId,
         'createdDocument.sourceDocumentId',
         'must be ${lockedSource.documentId}',
+      );
+    }
+    if (createdDocument.lockedAt != null) {
+      throw ArgumentError.value(
+        createdDocument.documentId,
+        'createdDocument',
+        'must not have lockedAt set',
       );
     }
     final sourceRow = _rowFromDocument(lockedSource);

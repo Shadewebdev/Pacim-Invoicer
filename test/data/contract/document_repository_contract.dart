@@ -505,6 +505,44 @@ void runDocumentRepositoryContract(
         expect(await repository.getDocument('do2'), secondDelivery);
       });
 
+      test('saveUpgrade rejects a source that is not locked', () async {
+        final quotation = documentWith(id: 'qt');
+        await repository.saveDocument(quotation);
+        final salesOrder = derivedFrom(
+          quotation,
+          id: 'so',
+          type: DocumentType.salesOrder,
+          number: 'SO-2026-0001',
+        );
+
+        await expectLater(
+          repository.saveUpgrade(
+            lockedSource: quotation,
+            createdDocument: salesOrder,
+          ),
+          throwsA(isA<ArgumentError>()),
+        );
+      });
+
+      test('saveUpgrade rejects a created document whose sourceDocumentId '
+          'does not match', () async {
+        final quotation = documentWith(id: 'qt');
+        await repository.saveDocument(quotation);
+        final unrelated = documentWith(
+          id: 'so',
+          number: 'SO-2026-0001',
+          type: DocumentType.salesOrder,
+        ).copyWith(sourceDocumentId: 'other');
+
+        await expectLater(
+          repository.saveUpgrade(
+            lockedSource: lockedCopyOf(quotation),
+            createdDocument: unrelated,
+          ),
+          throwsA(isA<ArgumentError>()),
+        );
+      });
+
       test('saveUpgrade throws DocumentLockedException when the source differs '
           'from the stored one in more than the lock', () async {
         final quotation = documentWith(id: 'qt');
