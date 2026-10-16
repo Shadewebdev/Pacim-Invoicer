@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pacim_invoicer/app/shell/status_bar_message_provider.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
+import 'package:pacim_invoicer/domain/exceptions/document_exceptions.dart';
 import 'package:pacim_invoicer/domain/models/business_document.dart';
 import 'package:pacim_invoicer/domain/models/currency_format.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
@@ -16,6 +19,25 @@ import '../../support/fake_repositories.dart';
 import '../../support/sequential_id_generator.dart';
 
 final _now = DateTime(2026, 10, 17, 12);
+
+/// A repository whose reads can fail and whose saves can wait on a gate.
+class _ScriptedDocumentRepository extends FakeDocumentRepository {
+  bool failReads = false;
+  Completer<void>? saveGate;
+
+  @override
+  Future<List<BusinessDocument>> getDocumentsInChain(String chainId) async {
+    if (failReads) throw const StorageWriteException('fake read failure');
+    return super.getDocumentsInChain(chainId);
+  }
+
+  @override
+  Future<void> saveDocument(BusinessDocument document) async {
+    final gate = saveGate;
+    if (gate != null) await gate.future;
+    await super.saveDocument(document);
+  }
+}
 
 class _Harness {
   _Harness(
@@ -38,7 +60,7 @@ class _Harness {
     );
   }
 
-  final repository = FakeDocumentRepository();
+  final repository = _ScriptedDocumentRepository();
   final settings = FakeSettingsRepository();
   late final ProviderContainer container;
   final String documentId;
@@ -375,6 +397,91 @@ void main() {
             '',
       );
       expect(harness.state.saveStatus, SaveStatus.pending);
+    });
+  });
+
+  test('a failing reload after a lock does not block later saves', () {
+    final salesOrder = buildTestDocument(
+      type: DocumentType.salesOrder,
+      documentId: 'so-1',
+    );
+    final deliveryOrder = buildTestDocument(
+      type: DocumentType.deliveryOrder,
+      documentId: 'do-1',
+      sourceDocumentId: 'so-1',
+    );
+    _withHarness(deliveryOrder, others: [salesOrder], (async, harness) {
+      harness.controller.updateNotes('mine');
+      harness.repository.seed(
+        deliveryOrder.copyWith(lockedAt: DateTime.utc(2026, 10, 18)),
+      );
+      harness.repository.failReads = true;
+      async.elapse(const Duration(seconds: 2));
+      async.flushMicrotasks();
+      expect(harness.state.saveStatus, SaveStatus.failed);
+
+      harness.repository.failReads = false;
+      harness.controller.retrySave();
+      async.flushMicrotasks();
+
+      expect(harness.state.saveStatus, SaveStatus.saved);
+      expect(harness.state.isLocked, isTrue);
+    });
+  });
+
+  test('an edit made during an in-flight save is saved afterwards', () {
+    _withHarness(buildTestDocument(), (async, harness) {
+      final gate = Completer<void>();
+      harness.repository.saveGate = gate;
+      harness.controller.updateNotes('one');
+      async.elapse(const Duration(seconds: 2));
+      async.flushMicrotasks();
+      expect(harness.state.saveStatus, SaveStatus.saving);
+
+      harness.controller.updateNotes('two');
+      harness.repository.saveGate = null;
+      gate.complete();
+      async.flushMicrotasks();
+      expect(harness.repository.saveCount, 1);
+      expect(harness.state.saveStatus, SaveStatus.pending);
+
+      async.elapse(const Duration(seconds: 2));
+      async.flushMicrotasks();
+
+      expect(harness.repository.saveCount, 2);
+      expect(harness.repository.storedDocuments.single.notes, 'two');
+      expect(harness.state.saveStatus, SaveStatus.saved);
+    });
+  });
+
+  test('disposing after a failed save still flushes the edits', () {
+    fakeAsync((async) {
+      final harness = _Harness(buildTestDocument());
+      async.flushMicrotasks();
+      harness.repository.failNextSave = true;
+      harness.controller.updateNotes('kept');
+      async.elapse(const Duration(seconds: 2));
+      async.flushMicrotasks();
+      expect(harness.state.saveStatus, SaveStatus.failed);
+
+      harness.container.dispose();
+      async.flushMicrotasks();
+
+      expect(harness.repository.storedDocuments.single.notes, 'kept');
+    });
+  });
+
+  test('an older stored emission does not overwrite newer state', () {
+    _withHarness(buildTestDocument(), (async, harness) {
+      harness.repository.seed(
+        buildTestDocument().copyWith(
+          notes: 'stale',
+          updatedAt: DateTime.utc(2026, 10, 17, 8),
+        ),
+      );
+      async.flushMicrotasks();
+
+      expect(harness.state.document.notes, 'Thank you.');
     });
   });
 }

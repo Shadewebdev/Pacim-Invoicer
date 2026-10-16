@@ -284,6 +284,7 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
     final current = state.value;
     if (current == null ||
         current.saveStatus != SaveStatus.saved ||
+        stored.updatedAt.isBefore(current.document.updatedAt) ||
         stored == current.document) {
       return;
     }
@@ -304,7 +305,10 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
   /// Runs saves one after another so two never overlap.
   Future<void> _enqueueSave() {
     final previous = _lastSave;
-    final saved = previous.then((_) => _saveCurrentDocument());
+    // A failed earlier save must never block the ones after it.
+    final saved = previous
+        .catchError((Object _) {})
+        .then((_) => _saveCurrentDocument());
     _lastSave = saved;
     return saved;
   }
@@ -329,14 +333,20 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
             : latest,
       );
     } on DocumentLockedException {
-      await _reloadStoredDocument();
+      try {
+        await _reloadStoredDocument();
+      } on Object {
+        _markSaveFailed();
+      }
     } on Object {
-      if (!ref.mounted) return;
-      _publish(state.requireValue.copyWith(saveStatus: SaveStatus.failed));
-      ref
-          .read(statusBarMessageProvider.notifier)
-          .showMessage(_saveFailedMessage);
+      _markSaveFailed();
     }
+  }
+
+  void _markSaveFailed() {
+    if (!ref.mounted) return;
+    _publish(state.requireValue.copyWith(saveStatus: SaveStatus.failed));
+    ref.read(statusBarMessageProvider.notifier).showMessage(_saveFailedMessage);
   }
 
   /// Drops local edits for a document that was locked elsewhere.
@@ -353,7 +363,11 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
     _autosaveTimer?.cancel();
     unawaited(_storedDocumentSubscription?.cancel());
     final current = _latestState;
-    if (current == null || current.saveStatus != SaveStatus.pending) return;
+    final hasUnsavedEdits =
+        current != null &&
+        (current.saveStatus == SaveStatus.pending ||
+            current.saveStatus == SaveStatus.failed);
+    if (current == null || !hasUnsavedEdits) return;
     final toSave = current.document.copyWith(updatedAt: _clock());
     final repository = _repository;
     // Nothing is left to report to once the provider is gone.
