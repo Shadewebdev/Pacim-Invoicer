@@ -1,9 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
+import 'package:pacim_invoicer/data/images/image_import_service.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
 import 'package:pacim_invoicer/features/settings/header_preview.dart';
+import 'package:pacim_invoicer/features/settings/image_picker_field.dart';
+import 'package:pacim_invoicer/features/settings/settings_controller.dart';
 import 'package:pacim_invoicer/features/settings/settings_page.dart';
 
 import '../../support/fake_repositories.dart';
@@ -38,6 +43,7 @@ Future<FakeSettingsRepository> pumpSettingsPage(
 }
 
 void main() {
+  _imageImportTests();
   testWidgets('settings page shows the existing-documents note', (
     tester,
   ) async {
@@ -107,5 +113,59 @@ void main() {
 
     await pumpSettingsPage(tester, size: const Size(800, 800));
     expect(find.byType(HeaderPreview), findsNothing);
+  });
+}
+
+class _PassThroughImageImportService extends ImageImportService {
+  const _PassThroughImageImportService();
+
+  @override
+  Future<Uint8List> prepareImageForStorage(Uint8List originalBytes) async =>
+      originalBytes;
+}
+
+void _imageImportTests() {
+  testWidgets('a storage failure while importing shows an inline error', (
+    tester,
+  ) async {
+    final assetRepository = FakeAssetRepository()..failNextStore = true;
+    final container = ProviderContainer(
+      overrides: [
+        settingsRepositoryProvider.overrideWithValue(FakeSettingsRepository()),
+        assetRepositoryProvider.overrideWithValue(assetRepository),
+        imageImportServiceProvider.overrideWithValue(
+          const _PassThroughImageImportService(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    await container.read(settingsControllerProvider.future);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: buildAppTheme(
+            brightness: Brightness.light,
+            platform: TargetPlatform.windows,
+          ),
+          home: Scaffold(
+            body: ImagePickerField(
+              label: 'Company logo',
+              assetId: null,
+              pickImageBytes: () async => Uint8List.fromList([1, 2, 3]),
+              onImagePicked: container
+                  .read(settingsControllerProvider.notifier)
+                  .importCompanyLogo,
+              onRemove: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Choose image'));
+    await tester.pumpAndSettle();
+
+    expect(find.text("Couldn't import that image"), findsOneWidget);
   });
 }

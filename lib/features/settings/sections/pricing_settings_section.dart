@@ -114,6 +114,17 @@ class PricingSettingsSection extends StatelessWidget {
           'Example: ${formatMoney(123456, currency)}',
           style: const TextStyle(fontSize: AppTypography.body),
         ),
+        SettingsParsedField<int>(
+          label: 'Quotation validity (days)',
+          initialText: settings.quotationValidityDays.toString(),
+          errorText: 'Enter a number from 1 to 365',
+          parse: (text) {
+            final days = int.tryParse(text.trim());
+            if (days == null || days < 1 || days > 365) return null;
+            return days;
+          },
+          onParsed: controller.updateQuotationValidityDays,
+        ),
         SettingsToggleRow(
           label: 'Charge tax on new documents',
           value: pricing.isTaxEnabled,

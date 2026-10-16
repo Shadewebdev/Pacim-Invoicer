@@ -61,6 +61,12 @@ class SettingsController extends AsyncNotifier<DocumentSettings> {
     ),
   );
 
+  /// Ignores values outside 1 to 365 days.
+  void updateQuotationValidityDays(int days) {
+    if (days < 1 || days > 365) return;
+    _applyChange((current) => current.copyWith(quotationValidityDays: days));
+  }
+
   void updateFooterNote(String footerNote) => _applyChange(
     (current) => current.copyWith(defaultFooterNote: footerNote),
   );

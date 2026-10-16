@@ -42,13 +42,16 @@ class _ImagePickerFieldState extends ConsumerState<ImagePickerField> {
   String? _errorMessage;
 
   Future<void> _choose() async {
-    final bytes = await widget.pickImageBytes();
-    if (bytes == null) return;
+    String? errorMessage;
     try {
+      final bytes = await widget.pickImageBytes();
+      if (bytes == null) return;
       await widget.onImagePicked(bytes);
-      if (mounted) setState(() => _errorMessage = null);
     } on ImageImportException catch (exception) {
-      if (mounted) setState(() => _errorMessage = exception.message);
+      errorMessage = exception.message;
+    } on Object {
+      errorMessage = "Couldn't import that image";
+      if (mounted) setState(() => _errorMessage = errorMessage);
     }
   }
 

@@ -13,7 +13,9 @@ class PacimInvoicerApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Loading the settings applies the saved appearance to themeModeProvider.
-    ref.watch(settingsControllerProvider);
+    ref.watch(
+      settingsControllerProvider.select((settings) => settings.hasValue),
+    );
     final platform = defaultTargetPlatform;
     return MaterialApp.router(
       title: 'Pacim Invoicer',

@@ -13,11 +13,21 @@ import 'package:pacim_invoicer/domain/models/document_list_query.dart';
 import 'package:pacim_invoicer/domain/models/document_settings.dart';
 import 'package:pacim_invoicer/domain/models/document_summary.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
+import 'package:pacim_invoicer/domain/services/document_totals_calculator.dart';
 
 /// Emits the current value to every new listener, then each later change.
-Stream<T> _watchValue<T>(Stream<T> changes, T Function() currentValue) async* {
-  yield currentValue();
-  yield* changes;
+/// The source is subscribed first, so a write right after listening is kept.
+Stream<T> _watchValue<T>(Stream<T> changes, T Function() currentValue) {
+  return Stream<T>.multi((listener) {
+    final subscription = changes.listen(
+      listener.addSync,
+      onError: listener.addErrorSync,
+    );
+    listener.addSync(currentValue());
+    listener.onCancel = () {
+      unawaited(subscription.cancel());
+    };
+  });
 }
 
 class FakeSettingsRepository implements SettingsRepository {
@@ -52,10 +62,17 @@ class FakeSettingsRepository implements SettingsRepository {
 }
 
 class FakeAssetRepository implements AssetRepository {
+  /// Makes the next [storeImage] call throw once.
+  bool failNextStore = false;
+
   final Map<String, Uint8List> storedImages = {};
 
   @override
   Future<String> storeImage(Uint8List bytes) async {
+    if (failNextStore) {
+      failNextStore = false;
+      throw const StorageWriteException('fake store failure');
+    }
     final assetId = 'asset-${base64Url.encode(bytes)}';
     storedImages[assetId] = bytes;
     return assetId;
@@ -99,7 +116,9 @@ class FakeDocumentRepository implements DocumentRepository {
     sourceDocumentId: document.sourceDocumentId,
     customerName: document.customerDetails.customerName,
     issueDate: document.issueDate,
-    grandTotalMinor: 0,
+    grandTotalMinor: const DocumentTotalsCalculator()
+        .calculate(document)
+        .grandTotalMinor,
     currencyCode: document.pricingTerms.currencyFormat.currencyCode,
     isLocked: document.lockedAt != null,
     updatedAt: document.updatedAt,

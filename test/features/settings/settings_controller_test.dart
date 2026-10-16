@@ -52,6 +52,7 @@ Future<_Setup> _createLoadedContainer(WidgetTester tester) async {
 }
 
 void main() {
+  _quotationValidityTests();
   testWidgets('updateCompanyDetails persists after debounce', (tester) async {
     final setup = await _createLoadedContainer(tester);
     final container = setup.container;
@@ -234,5 +235,26 @@ void main() {
     await tester.pump();
     expect(setup.settingsRepository.currentSettings.appearance, 'dark');
     container.dispose();
+  });
+}
+
+void _quotationValidityTests() {
+  testWidgets('updateQuotationValidityDays accepts 1 to 365 only', (
+    tester,
+  ) async {
+    final setup = await _createLoadedContainer(tester);
+    final controller = setup.container.read(
+      settingsControllerProvider.notifier,
+    );
+
+    controller.updateQuotationValidityDays(0);
+    controller.updateQuotationValidityDays(366);
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(setup.settingsRepository.saveCount, 0);
+
+    controller.updateQuotationValidityDays(14);
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(setup.settingsRepository.currentSettings.quotationValidityDays, 14);
+    setup.container.dispose();
   });
 }
