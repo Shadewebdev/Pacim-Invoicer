@@ -157,7 +157,7 @@ DocumentSettings (global, a single record)
 
 DocumentSummary (listing row projection)
   documentId, documentType, documentNumber, chainId, sourceDocumentId, customerName,
-  issueDate, grandTotalMinor, currencyCode, isLocked, updatedAt
+  issueDate, grandTotalMinor, currencyFormat (snapshot; currencyCode is derived), isLocked, updatedAt
 
 DocumentChain (breadcrumb)
   chainId, quotation: DocumentSummary?, salesOrder: DocumentSummary?,
@@ -227,10 +227,13 @@ abstract interface class DocumentRepository {
   Future<void> saveUpgrade({required BusinessDocument lockedSource,
                             required BusinessDocument createdDocument}); // one transaction
   Future<void> deleteDocument(String documentId);           // unlocked only
+  Future<bool> documentNumberExists(DocumentType type, String documentNumber);
+  Stream<int> watchDocumentCount(DocumentListQuery query);   // ignores limit
 }
 
 abstract interface class NumberSequenceRepository {
   Future<int> allocateNextSequence(DocumentType type, {required int year, required bool resetsYearly});
+  Future<int> peekNextSequence(DocumentType type, {required int year, required bool resetsYearly});
 }
 
 abstract interface class AssetRepository {
@@ -250,7 +253,7 @@ page size and cursor.
 ### 5.2 Local storage (Drift)
 - Tables:
   - `documents`: the `DocumentSummary` columns plus `payloadJson` and `schemaVersion`. Indexes on
-    (type, issueDate), (chainId), (type, documentNumber).
+    (type, issueDate), (chainId), and a UNIQUE index on (type, documentNumber). Also stores `searchText` (lowercased number + customer) and `currencyFormatJson`.
   - `number_sequences`: (type, year) → lastSequence.
   - `assets`: assetId → bytes, mimeType.
   - `settings`: a single row holding JSON.
