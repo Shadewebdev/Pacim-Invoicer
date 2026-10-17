@@ -15,6 +15,9 @@ import '../../domain/services/document_upgrade_service.dart';
 /// Creates, upgrades, duplicates and deletes documents. Every created document
 /// gets its number allocated here, once, from the type's numbering rule.
 class DocumentCommands {
+  /// How many sequences one allocation tries before giving up.
+  static const int maximumNumberAttempts = 1000;
+
   const DocumentCommands({
     required this.documentRepository,
     required this.numberSequenceRepository,
@@ -124,18 +127,34 @@ class DocumentCommands {
   Future<DocumentSettings> _readSettings() =>
       settingsRepository.watchSettings().first;
 
+  /// Allocates sequences until the formatted number is not already used by a
+  /// stored document of [type], which can happen after the pattern changed.
+  /// The unique (type, number) index still refuses a duplicate that slips
+  /// past this check.
   Future<String> _allocateDocumentNumber(
     DocumentType type,
     DocumentSettings settings,
     DateTime now,
   ) async {
     final rule = settings.numberingRuleByType[type]!;
-    final sequence = await numberSequenceRepository.allocateNextSequence(
-      type,
-      year: now.year,
-      resetsYearly: rule.resetsYearly,
+    for (var attempt = 0; attempt < maximumNumberAttempts; attempt++) {
+      final sequence = await numberSequenceRepository.allocateNextSequence(
+        type,
+        year: now.year,
+        resetsYearly: rule.resetsYearly,
+      );
+      final number = numberFormatter.format(
+        rule.pattern,
+        sequence: sequence,
+        date: now,
+      );
+      if (!await documentRepository.documentNumberExists(type, number)) {
+        return number;
+      }
+    }
+    throw StateError(
+      'No unused ${type.name} number after $maximumNumberAttempts attempts',
     );
-    return numberFormatter.format(rule.pattern, sequence: sequence, date: now);
   }
 }
 

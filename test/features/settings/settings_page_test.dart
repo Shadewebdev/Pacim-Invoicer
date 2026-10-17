@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
 import 'package:pacim_invoicer/data/images/image_import_service.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
+import 'package:pacim_invoicer/domain/models/document_type.dart';
 import 'package:pacim_invoicer/features/settings/header_preview.dart';
 import 'package:pacim_invoicer/features/settings/image_picker_field.dart';
 import 'package:pacim_invoicer/features/settings/settings_controller.dart';
@@ -16,6 +17,7 @@ import '../../support/fake_repositories.dart';
 Future<FakeSettingsRepository> pumpSettingsPage(
   WidgetTester tester, {
   Size size = const Size(1200, 800),
+  FakeNumberSequenceRepository? sequences,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -27,6 +29,9 @@ Future<FakeSettingsRepository> pumpSettingsPage(
       overrides: [
         settingsRepositoryProvider.overrideWithValue(settingsRepository),
         assetRepositoryProvider.overrideWithValue(FakeAssetRepository()),
+        numberSequenceRepositoryProvider.overrideWithValue(
+          sequences ?? FakeNumberSequenceRepository(),
+        ),
         clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
       ],
       child: MaterialApp(
@@ -63,6 +68,23 @@ void main() {
     expect(find.text('QT-2026-0001'), findsOneWidget);
   });
 
+  testWidgets('numbering preview continues from the current counter', (
+    tester,
+  ) async {
+    final sequences = FakeNumberSequenceRepository();
+    for (var i = 0; i < 2; i++) {
+      await sequences.allocateNextSequence(
+        DocumentType.quotation,
+        year: 2026,
+        resetsYearly: false,
+      );
+    }
+    await pumpSettingsPage(tester, sequences: sequences);
+    await tester.tap(find.text('Numbering'));
+    await tester.pumpAndSettle();
+    expect(find.text('QT-2026-0003'), findsOneWidget);
+  });
+
   testWidgets('an invalid numbering pattern shows its problem inline', (
     tester,
   ) async {
@@ -75,6 +97,40 @@ void main() {
 
     expect(find.text('Add {seq:N} so each number is unique'), findsOneWidget);
     expect(repository.saveCount, 0);
+  });
+
+  testWidgets('a yearly reset without a year token shows its problem', (
+    tester,
+  ) async {
+    final repository = await pumpSettingsPage(tester);
+    await tester.tap(find.text('Numbering'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, 'QT-{seq:4}');
+    await tester.pump(const Duration(milliseconds: 700));
+    final savesBeforeToggle = repository.saveCount;
+    await tester.tap(find.text('Restart numbering each year'));
+    await tester.pump(const Duration(milliseconds: 700));
+
+    expect(
+      find.text('Add {yyyy} or {yy} so yearly numbers stay unique'),
+      findsOneWidget,
+    );
+    expect(repository.saveCount, savesBeforeToggle);
+    expect(
+      repository.currentSettings.numberingRuleByType.values.any(
+        (rule) => rule.resetsYearly,
+      ),
+      isFalse,
+    );
+
+    // Adding a year token saves the pattern and the reset together.
+    await tester.enterText(find.byType(TextField).first, 'QT-{yy}-{seq:4}');
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    final saved = repository.currentSettings.numberingRuleByType.values.first;
+    expect(saved.pattern, 'QT-{yy}-{seq:4}');
+    expect(saved.resetsYearly, isTrue);
   });
 
   testWidgets('typing a company name saves after the debounce', (tester) async {
@@ -115,6 +171,37 @@ void main() {
       expect(repository.saveCount, 1);
     },
   );
+
+  testWidgets('matching separators are refused both ways', (tester) async {
+    final repository = await pumpSettingsPage(tester);
+    await tester.tap(find.text('Pricing & currency'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Thousands separator'),
+      '.',
+    );
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(
+      find.text('Use a different separator from the decimal one'),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Thousands separator'),
+      ',',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Decimal separator'),
+      ',',
+    );
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(
+      find.text('Use a different separator from the thousands one'),
+      findsOneWidget,
+    );
+    expect(repository.saveCount, 0);
+  });
 
   testWidgets('a non-numeric tax rate shows an error and is not saved', (
     tester,

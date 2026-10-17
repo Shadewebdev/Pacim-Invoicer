@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/theme/app_color_tokens.dart';
 import '../../app/theme/app_typography.dart';
 import '../../data/images/image_import_service.dart';
+import '../../shared/error_reporting.dart';
 import 'asset_image_provider.dart';
 
 /// Opens the system image picker and returns the chosen file's bytes, or null
@@ -51,7 +52,8 @@ class _ImagePickerFieldState extends ConsumerState<ImagePickerField> {
       await widget.onImagePicked(bytes);
     } on ImageImportException catch (exception) {
       errorMessage = exception.message;
-    } on Object {
+    } on Object catch (error, stack) {
+      reportAndDescribeError(error, stack);
       errorMessage = "Couldn't import that image";
     }
     if (mounted) setState(() => _errorMessage = errorMessage);

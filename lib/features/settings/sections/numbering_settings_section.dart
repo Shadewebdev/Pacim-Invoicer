@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme/app_color_tokens.dart';
 import '../../../app/theme/app_typography.dart';
+import '../../../data/repository_providers.dart';
 import '../../../domain/models/document_numbering_rule.dart';
 import '../../../domain/models/document_settings.dart';
 import '../../../domain/models/document_type.dart';
@@ -10,7 +12,22 @@ import '../settings_controller.dart';
 import '../settings_fields.dart';
 import 'document_type_tabs.dart';
 
-class NumberingSettingsSection extends StatefulWidget {
+/// Which counter a numbering preview reads.
+typedef NextSequenceKey = ({DocumentType type, int year, bool resetsYearly});
+
+/// The sequence the next document of a type would get, for the preview.
+final nextSequenceProvider = FutureProvider.autoDispose
+    .family<int, NextSequenceKey>(
+      (ref, key) => ref
+          .watch(numberSequenceRepositoryProvider)
+          .peekNextSequence(
+            key.type,
+            year: key.year,
+            resetsYearly: key.resetsYearly,
+          ),
+    );
+
+class NumberingSettingsSection extends ConsumerStatefulWidget {
   const NumberingSettingsSection({
     required this.settings,
     required this.controller,
@@ -29,40 +46,50 @@ class NumberingSettingsSection extends StatefulWidget {
   final DateTime previewDate;
 
   @override
-  State<NumberingSettingsSection> createState() =>
+  ConsumerState<NumberingSettingsSection> createState() =>
       _NumberingSettingsSectionState();
 }
 
-class _NumberingSettingsSectionState extends State<NumberingSettingsSection> {
+class _NumberingSettingsSectionState
+    extends ConsumerState<NumberingSettingsSection> {
   static const _formatter = DocumentNumberFormatter();
 
-  /// What is typed in the pattern field per type, including invalid text that
-  /// was not saved.
-  final Map<DocumentType, String> _typedPatternByType = {};
+  /// The rule as shown per type, including an invalid pattern or reset choice
+  /// that was not saved.
+  final Map<DocumentType, DocumentNumberingRule> _shownRuleByType = {};
 
   DocumentNumberingRule get _savedRule =>
       widget.settings.numberingRuleByType[widget.selectedType]!;
 
-  String get _shownPattern =>
-      _typedPatternByType[widget.selectedType] ?? _savedRule.pattern;
+  DocumentNumberingRule get _shownRule =>
+      _shownRuleByType[widget.selectedType] ?? _savedRule;
 
-  void _handlePatternChanged(String pattern) {
-    setState(() => _typedPatternByType[widget.selectedType] = pattern);
-    widget.controller.updateNumberingRule(
-      widget.selectedType,
-      _savedRule.copyWith(pattern: pattern),
-    );
+  /// Saves [rule] when it has no problems; until then it is only shown.
+  void _changeRule(DocumentNumberingRule rule) {
+    setState(() => _shownRuleByType[widget.selectedType] = rule);
+    widget.controller.updateNumberingRule(widget.selectedType, rule);
   }
 
   @override
   Widget build(BuildContext context) {
     final tokens = Theme.of(context).extension<AppColorTokens>()!;
-    final problems = widget.controller.findNumberingPatternProblems(
-      _shownPattern,
-    );
+    final shownRule = _shownRule;
+    final problems = widget.controller.findNumberingRuleProblems(shownRule);
+    final previewRule = problems.isEmpty ? shownRule : _savedRule;
+    final nextSequence =
+        ref
+            .watch(
+              nextSequenceProvider((
+                type: widget.selectedType,
+                year: widget.previewDate.year,
+                resetsYearly: previewRule.resetsYearly,
+              )),
+            )
+            .value ??
+        1;
     final nextNumber = _formatter.format(
-      problems.isEmpty ? _shownPattern : _savedRule.pattern,
-      sequence: 1,
+      previewRule.pattern,
+      sequence: nextSequence,
       date: widget.previewDate,
     );
 
@@ -76,9 +103,10 @@ class _NumberingSettingsSectionState extends State<NumberingSettingsSection> {
         SettingsTextField(
           key: ValueKey('pattern-${widget.selectedType}'),
           label: 'Number pattern',
-          value: _shownPattern,
+          value: shownRule.pattern,
           errorText: problems.isEmpty ? null : problems.join('\n'),
-          onChanged: _handlePatternChanged,
+          onChanged: (pattern) =>
+              _changeRule(shownRule.copyWith(pattern: pattern)),
         ),
         Text(
           'Use {yyyy}, {yy}, {mm} and {seq:N}. For example, QT-{yyyy}-{seq:4}.',
@@ -89,11 +117,9 @@ class _NumberingSettingsSectionState extends State<NumberingSettingsSection> {
         ),
         SettingsToggleRow(
           label: 'Restart numbering each year',
-          value: _savedRule.resetsYearly,
-          onChanged: (value) => widget.controller.updateNumberingRule(
-            widget.selectedType,
-            _savedRule.copyWith(resetsYearly: value),
-          ),
+          value: shownRule.resetsYearly,
+          onChanged: (value) =>
+              _changeRule(shownRule.copyWith(resetsYearly: value)),
         ),
         Row(
           children: [

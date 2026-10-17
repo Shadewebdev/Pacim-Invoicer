@@ -13,6 +13,7 @@ import 'package:pacim_invoicer/features/pdf_export/pdf_export_service.dart';
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
 import 'package:pacim_invoicer/domain/models/business_document.dart';
+import 'package:pacim_invoicer/domain/models/currency_format.dart';
 import 'package:pacim_invoicer/domain/models/customer_details.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
 import 'package:pacim_invoicer/features/document_list/document_list_controller.dart';
@@ -95,6 +96,85 @@ void main() {
     await pumpListPage(tester);
     expect(find.text('No quotations yet'), findsOneWidget);
     expect(find.text('New quotation'), findsWidgets);
+  });
+
+  testWidgets('each total uses the currency format of its own document', (
+    tester,
+  ) async {
+    final base = _document(id: 'y1', number: 'QT-2026-0001', customer: 'Acme');
+    await pumpListPage(
+      tester,
+      seeded: [
+        base.copyWith(
+          lineItems: [buildTestLine(unitPriceMinor: 1500)],
+          pricingTerms: base.pricingTerms.copyWith(
+            isTaxEnabled: false,
+            currencyFormat: const CurrencyFormat(
+              currencyCode: 'JPY',
+              symbol: '¥',
+              decimalPlaces: 0,
+              symbolPosition: CurrencySymbolPosition.before,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    expect(find.text('¥1,500'), findsOneWidget);
+  });
+
+  testWidgets('leaving the list stops its chain and listing watchers', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final documents = WatchCountingDocumentRepository()
+      ..seed(_document(id: 'a', number: 'QT-2026-0001', customer: 'Acme'))
+      ..seed(_document(id: 'b', number: 'QT-2026-0002', customer: 'Beta'));
+    final container = ProviderContainer(
+      overrides: [
+        ...fakeStorageOverrides(documents: documents),
+        clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
+      ],
+    );
+    addTearDown(container.dispose);
+    final showsList = ValueNotifier<bool>(true);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: buildAppTheme(
+            brightness: Brightness.light,
+            platform: TargetPlatform.windows,
+          ),
+          home: Scaffold(
+            body: ValueListenableBuilder<bool>(
+              valueListenable: showsList,
+              builder: (context, showsList, _) => showsList
+                  ? const DocumentListPage(documentType: DocumentType.quotation)
+                  : const Text('elsewhere'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(documents.openChainWatches, 2);
+
+    showsList.value = false;
+    await tester.pumpAndSettle();
+
+    expect(documents.openChainWatches, 0);
+    expect(
+      container.exists(documentSummariesProvider(DocumentType.quotation)),
+      isFalse,
+    );
+    expect(
+      container.exists(documentCountProvider(DocumentType.quotation)),
+      isFalse,
+    );
   });
 
   testWidgets('delivery order list hides the total column', (tester) async {

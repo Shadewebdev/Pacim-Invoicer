@@ -7,6 +7,7 @@ import '../../support/test_provider_overrides.dart';
 
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
+import 'package:pacim_invoicer/domain/models/currency_format.dart';
 import 'package:pacim_invoicer/domain/models/document_summary.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
 import 'package:pacim_invoicer/features/document_editor/document_editor_page.dart';
@@ -24,7 +25,7 @@ final _createdFrom = DocumentSummary(
   customerName: 'Acme Trading',
   issueDate: DateTime(2026, 10, 17),
   grandTotalMinor: 0,
-  currencyCode: 'MYR',
+  currencyFormat: CurrencyFormat.defaultFormat,
   isLocked: false,
   updatedAt: DateTime(2026, 10, 17),
 );

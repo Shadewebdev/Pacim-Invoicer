@@ -18,6 +18,7 @@ class InlineTextField extends StatefulWidget {
     this.maxLines = 1,
     this.placeholder,
     this.textAlign = TextAlign.start,
+    this.issueMessage,
     super.key,
   });
 
@@ -31,6 +32,10 @@ class InlineTextField extends StatefulWidget {
   final String? placeholder;
   final TextAlign textAlign;
 
+  /// A validation problem with the value; an editable field then has an
+  /// error outline and shows the message as its tooltip.
+  final String? issueMessage;
+
   @override
   State<InlineTextField> createState() => _InlineTextFieldState();
 }
@@ -39,6 +44,9 @@ class _InlineTextFieldState extends State<InlineTextField> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
   bool _isHovered = false;
+
+  /// Keeps the text field's state when the issue tooltip wraps it.
+  final _fieldKey = GlobalKey();
 
   /// The text last handed to onCommitted (or the initial value), so Enter
   /// followed by blur commits once.
@@ -96,7 +104,10 @@ class _InlineTextFieldState extends State<InlineTextField> {
     // The page stays white in dark mode, so it uses the light tokens.
     const tokens = AppColorTokens.light;
     final isEditable = !widget.readOnly;
-    final outlineColor = !isEditable
+    final issueMessage = isEditable ? widget.issueMessage : null;
+    final outlineColor = issueMessage != null
+        ? Theme.of(context).colorScheme.error
+        : !isEditable
         ? Colors.transparent
         : _focusNode.hasFocus
         ? tokens.action
@@ -113,7 +124,8 @@ class _InlineTextFieldState extends State<InlineTextField> {
     ).merge(widget.style);
     final isSingleLine = widget.maxLines == 1;
 
-    return MouseRegion(
+    final Widget field = MouseRegion(
+      key: _fieldKey,
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       cursor: isEditable ? SystemMouseCursors.text : MouseCursor.defer,
@@ -157,6 +169,8 @@ class _InlineTextFieldState extends State<InlineTextField> {
         ),
       ),
     );
+    if (issueMessage == null) return field;
+    return Tooltip(message: issueMessage, child: field);
   }
 }
 

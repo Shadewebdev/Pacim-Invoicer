@@ -422,4 +422,40 @@ void main() {
     expect(path(), '/sales-orders');
     expect(documents.storedDocuments.single.notes, 'edited');
   });
+
+  testWidgets('system back with no route to pop goes to the type list', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final documents = FakeDocumentRepository()..seed(buildTestDocument());
+    final container = ProviderContainer(
+      retry: (_, _) => null,
+      overrides: [
+        ...fakeStorageOverrides(documents: documents),
+        clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const PacimInvoicerApp(),
+      ),
+    );
+    final router = container.read(appRouterProvider)..go('/documents/doc-1');
+    await tester.pumpAndSettle();
+    String path() => router.routeInformationProvider.value.uri.path;
+    container
+        .read(documentEditorControllerProvider('doc-1').notifier)
+        .updateNotes('edited');
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(path(), '/quotations');
+    expect(documents.storedDocuments.single.notes, 'edited');
+  });
 }

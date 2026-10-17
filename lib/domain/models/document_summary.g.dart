@@ -16,7 +16,9 @@ _DocumentSummary _$DocumentSummaryFromJson(Map<String, dynamic> json) =>
       customerName: json['customerName'] as String,
       issueDate: DateTime.parse(json['issueDate'] as String),
       grandTotalMinor: (json['grandTotalMinor'] as num).toInt(),
-      currencyCode: json['currencyCode'] as String,
+      currencyFormat: CurrencyFormat.fromJson(
+        json['currencyFormat'] as Map<String, dynamic>,
+      ),
       isLocked: json['isLocked'] as bool,
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
@@ -31,7 +33,7 @@ Map<String, dynamic> _$DocumentSummaryToJson(_DocumentSummary instance) =>
       'customerName': instance.customerName,
       'issueDate': instance.issueDate.toIso8601String(),
       'grandTotalMinor': instance.grandTotalMinor,
-      'currencyCode': instance.currencyCode,
+      'currencyFormat': instance.currencyFormat.toJson(),
       'isLocked': instance.isLocked,
       'updatedAt': instance.updatedAt.toIso8601String(),
     };

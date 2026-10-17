@@ -1,10 +1,13 @@
+import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
 import 'package:pacim_invoicer/domain/exceptions/document_exceptions.dart';
+import 'package:pacim_invoicer/domain/models/document_numbering_rule.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
 import 'package:pacim_invoicer/features/document_editor/document_commands.dart';
 
+import '../../support/document_builders.dart';
 import '../../support/fake_repositories.dart';
 import '../../support/sequential_id_generator.dart';
 
@@ -116,5 +119,103 @@ void main() {
       (await harness.documents.getDocument(nextId)).documentNumber,
       'SO-2026-0002',
     );
+  });
+
+  test('a number that already exists is skipped', () async {
+    final harness = _Harness();
+    addTearDown(harness.container.dispose);
+    harness.documents.seed(buildTestDocument(documentId: 'existing'));
+
+    final createdId = await harness.commands.createDocument(
+      DocumentType.quotation,
+    );
+
+    expect(
+      (await harness.documents.getDocument(createdId)).documentNumber,
+      'QT-2026-0002',
+    );
+  });
+
+  group('switching yearly reset on stored documents', () {
+    late ProviderContainer container;
+    late FakeSettingsRepository settings;
+    var now = DateTime(2026, 3, 1);
+
+    setUp(() {
+      now = DateTime(2026, 3, 1);
+      settings = FakeSettingsRepository();
+      container = ProviderContainer(
+        overrides: [
+          databaseConnectionProvider.overrideWithValue(NativeDatabase.memory()),
+          settingsRepositoryProvider.overrideWithValue(settings),
+          idGeneratorProvider.overrideWithValue(SequentialIdGenerator()),
+          clockProvider.overrideWithValue(() => now),
+        ],
+      );
+    });
+
+    tearDown(() => container.dispose());
+
+    Future<void> useRule(DocumentNumberingRule rule) async {
+      final current = settings.currentSettings;
+      await settings.saveSettings(
+        current.copyWith(
+          numberingRuleByType: {
+            ...current.numberingRuleByType,
+            DocumentType.quotation: rule,
+          },
+        ),
+      );
+    }
+
+    Future<String> createQuotationNumber() async {
+      final commands = container.read(documentCommandsProvider);
+      final id = await commands.createDocument(DocumentType.quotation);
+      return (await container.read(documentRepositoryProvider).getDocument(id))
+          .documentNumber;
+    }
+
+    test('turning it on mid-year never re-issues a number', () async {
+      await useRule(const DocumentNumberingRule(pattern: 'QT-{yyyy}-{seq:4}'));
+      expect(await createQuotationNumber(), 'QT-2026-0001');
+      expect(await createQuotationNumber(), 'QT-2026-0002');
+
+      await useRule(
+        const DocumentNumberingRule(
+          pattern: 'QT-{yyyy}-{seq:4}',
+          resetsYearly: true,
+        ),
+      );
+      expect(await createQuotationNumber(), 'QT-2026-0003');
+      now = DateTime(2027, 1, 2);
+      expect(await createQuotationNumber(), 'QT-2027-0001');
+    });
+
+    test('turning it off never re-issues a number', () async {
+      await useRule(
+        const DocumentNumberingRule(
+          pattern: 'QT-{yyyy}-{seq:4}',
+          resetsYearly: true,
+        ),
+      );
+      expect(await createQuotationNumber(), 'QT-2026-0001');
+      expect(await createQuotationNumber(), 'QT-2026-0002');
+
+      await useRule(const DocumentNumberingRule(pattern: 'QT-{yyyy}-{seq:4}'));
+      expect(await createQuotationNumber(), 'QT-2026-0003');
+    });
+
+    test('a number that is already stored is skipped', () async {
+      await useRule(const DocumentNumberingRule(pattern: 'QT-{yyyy}-{seq:4}'));
+      await container
+          .read(documentRepositoryProvider)
+          .saveDocument(
+            buildTestDocument(documentId: 'stored')
+                .copyWith(documentNumber: 'QT-2026-0002'),
+          );
+
+      expect(await createQuotationNumber(), 'QT-2026-0001');
+      expect(await createQuotationNumber(), 'QT-2026-0003');
+    });
   });
 }

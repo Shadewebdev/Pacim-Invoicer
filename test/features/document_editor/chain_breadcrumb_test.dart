@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
 import 'package:pacim_invoicer/app/theme/document_type_colors.dart';
+import 'package:pacim_invoicer/domain/models/currency_format.dart';
 import 'package:pacim_invoicer/domain/models/document_chain.dart';
 import 'package:pacim_invoicer/domain/models/document_summary.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
@@ -16,7 +17,7 @@ DocumentSummary _summary(String id, DocumentType type, String number) =>
       customerName: 'Acme Trading',
       issueDate: DateTime(2026, 10, 17),
       grandTotalMinor: 0,
-      currencyCode: 'MYR',
+      currencyFormat: CurrencyFormat.defaultFormat,
       isLocked: false,
       updatedAt: DateTime(2026, 10, 17),
     );

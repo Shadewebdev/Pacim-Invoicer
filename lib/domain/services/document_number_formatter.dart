@@ -32,15 +32,22 @@ class DocumentNumberFormatter {
     });
   }
 
-  /// User-facing reasons the [pattern] cannot produce unique numbers.
-  List<String> findPatternProblems(String pattern) {
+  /// User-facing reasons the [pattern] cannot produce unique numbers. A
+  /// sequence that restarts each year ([resetsYearly]) needs a year token.
+  List<String> findPatternProblems(
+    String pattern, {
+    required bool resetsYearly,
+  }) {
     final problems = <String>[];
     var sequenceTokenCount = 0;
+    var hasYearToken = false;
     for (final match in _tokenPattern.allMatches(pattern)) {
       final token = match.group(1)!;
       if (_sequenceTokenPattern.hasMatch(token)) {
         sequenceTokenCount++;
-      } else if (token != 'yyyy' && token != 'yy' && token != 'mm') {
+      } else if (token == 'yyyy' || token == 'yy') {
+        hasYearToken = true;
+      } else if (token != 'mm') {
         problems.add('Unknown token {$token}');
       }
     }
@@ -48,6 +55,9 @@ class DocumentNumberFormatter {
       problems.add('Add {seq:N} so each number is unique');
     } else if (sequenceTokenCount > 1) {
       problems.add('Use {seq:N} only once');
+    }
+    if (resetsYearly && !hasYearToken) {
+      problems.add('Add {yyyy} or {yy} so yearly numbers stay unique');
     }
     return problems;
   }

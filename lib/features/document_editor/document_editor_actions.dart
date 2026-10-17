@@ -5,6 +5,7 @@ import '../../app/shell/navigation_leave_guard.dart';
 import '../../domain/exceptions/document_exceptions.dart';
 import '../../domain/models/business_document.dart';
 import '../../data/repository_providers.dart';
+import '../../shared/error_reporting.dart';
 import '../pdf_export/pdf_export_flow.dart';
 import 'document_commands.dart';
 import 'document_editor_controller.dart';
@@ -220,7 +221,8 @@ class DocumentEditorActions {
       _showProblem(exception.reason);
     } on DocumentLockedException {
       _showProblem("This document is locked, so it can't be changed.");
-    } on Object {
+    } on Object catch (error, stack) {
+      reportAndDescribeError(error, stack);
       _showProblem(failureMessage);
     }
   }

@@ -23,6 +23,23 @@ class PricingSettingsSection extends StatelessWidget {
   final DocumentSettings settings;
   final SettingsController controller;
 
+  /// The current format with one separator changed, or null when the two
+  /// separators would clash.
+  CurrencyFormat? _withDistinctSeparators({
+    String? thousandsSeparator,
+    String? decimalSeparator,
+  }) {
+    final changed = settings.pricingTerms.currencyFormat.copyWith(
+      thousandsSeparator:
+          thousandsSeparator ??
+          settings.pricingTerms.currencyFormat.thousandsSeparator,
+      decimalSeparator:
+          decimalSeparator ??
+          settings.pricingTerms.currencyFormat.decimalSeparator,
+    );
+    return changed.hasDistinctSeparators ? changed : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final pricing = settings.pricingTerms;
@@ -61,20 +78,24 @@ class PricingSettingsSection extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: SettingsTextField(
+              child: SettingsParsedField<CurrencyFormat>(
                 label: 'Thousands separator',
-                value: currency.thousandsSeparator,
-                onChanged: (value) =>
-                    editCurrency(currency.copyWith(thousandsSeparator: value)),
+                initialText: currency.thousandsSeparator,
+                errorText: 'Use a different separator from the decimal one',
+                parse: (text) =>
+                    _withDistinctSeparators(thousandsSeparator: text),
+                onParsed: editCurrency,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: SettingsTextField(
+              child: SettingsParsedField<CurrencyFormat>(
                 label: 'Decimal separator',
-                value: currency.decimalSeparator,
-                onChanged: (value) =>
-                    editCurrency(currency.copyWith(decimalSeparator: value)),
+                initialText: currency.decimalSeparator,
+                errorText: 'Use a different separator from the thousands one',
+                parse: (text) =>
+                    _withDistinctSeparators(decimalSeparator: text),
+                onParsed: editCurrency,
               ),
             ),
           ],

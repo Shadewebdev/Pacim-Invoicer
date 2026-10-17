@@ -10,6 +10,7 @@ part 'pacim_database.g.dart';
 @TableIndex(
   name: 'documents_type_number',
   columns: {#documentType, #documentNumber},
+  unique: true,
 )
 class DocumentRows extends Table {
   @override
@@ -24,6 +25,10 @@ class DocumentRows extends Table {
   DateTimeColumn get issueDate => dateTime()();
   IntColumn get grandTotalMinor => integer()();
   TextColumn get currencyCode => text()();
+
+  /// The document's `CurrencyFormat` as JSON, so listings format each total
+  /// without decoding the payload.
+  TextColumn get currencyFormatJson => text()();
   DateTimeColumn get lockedAt => dateTime().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
   IntColumn get schemaVersion => integer()();

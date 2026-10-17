@@ -10,4 +10,10 @@ void main() {
     'quotation to sales order to two partial deliveries, then PDF export',
     runDocumentFlowScenario,
   );
+
+  testWidgets(
+    'the same flow on the real Drift repositories',
+    (tester) =>
+        runDocumentFlowScenario(tester, storage: DocumentFlowStorage.drift),
+  );
 }

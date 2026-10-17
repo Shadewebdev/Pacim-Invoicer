@@ -5,11 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/shell/navigation_leave_guard.dart';
+import '../../app/shell/status_bar_issues_provider.dart';
 import '../../app/theme/app_color_tokens.dart';
 import '../../app/theme/app_typography.dart';
 import '../../domain/exceptions/document_exceptions.dart';
 import '../../domain/models/business_document.dart';
 import '../../domain/models/document_type.dart';
+import '../../domain/models/validation_issue.dart';
 import 'document_editor_controller.dart';
 import 'document_editor_state.dart';
 import 'document_page/document_canvas.dart';
@@ -42,6 +44,17 @@ const double _commandSpacing = 8;
 const double _propertiesPaneMinimumWindowWidth = 1000;
 const double _propertiesSheetMaximumHeightFraction = 0.85;
 
+/// The status bar text for [issues], for example
+/// "2 issues: Customer name is empty; An item has a quantity of zero", or null
+/// when there are none. Each message is listed once, however many lines
+/// share it.
+String? describeValidationIssues(List<ValidationIssue> issues) {
+  if (issues.isEmpty) return null;
+  final count = issues.length == 1 ? '1 issue' : '${issues.length} issues';
+  final messages = {for (final issue in issues) issue.message};
+  return '$count: ${messages.join('; ')}';
+}
+
 /// The document editor: command bar, breadcrumb, A4 page canvas and the
 /// properties pane.
 class DocumentEditorPage extends ConsumerStatefulWidget {
@@ -73,10 +86,74 @@ class _DocumentEditorPageState extends ConsumerState<DocumentEditorPage> {
     skipTraversal: true,
   );
 
+  late final StatusBarIssuesController _statusBarIssues;
+  ProviderSubscription<String?>? _issuesSubscription;
+
+  /// The issues text this page put in the status bar.
+  String? _shownIssues;
+
+  /// The issues text waiting to be shown once the current build is over.
+  String? _pendingIssues;
+  bool _isIssuesUpdateScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _statusBarIssues = ref.read(statusBarIssuesProvider.notifier);
+    _listenToIssues();
+  }
+
+  @override
+  void didUpdateWidget(DocumentEditorPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.documentId != widget.documentId) _listenToIssues();
+  }
+
   @override
   void dispose() {
+    _issuesSubscription?.close();
+    final shownIssues = _shownIssues;
+    final statusBarIssues = _statusBarIssues;
+    // Clear after the tree is torn down, and only our own text, so an editor
+    // that replaces this one keeps its issues.
+    Future.microtask(() => statusBarIssues.clearIssues(shownIssues));
     _pageFocusNode.dispose();
     super.dispose();
+  }
+
+  /// Keeps the status bar listing the open document's issues. A locked or
+  /// missing document lists none, since nothing can be fixed.
+  void _listenToIssues() {
+    _issuesSubscription?.close();
+    _issuesSubscription = ref.listenManual(
+      documentEditorControllerProvider(widget.documentId).select((state) {
+        final value = state.value;
+        if (state.hasError || value == null || value.isLocked) return null;
+        return describeValidationIssues(value.validationIssues);
+      }),
+      (_, issues) => _scheduleIssuesUpdate(issues),
+      fireImmediately: true,
+    );
+  }
+
+  /// Providers cannot change while widgets build, so the status bar is
+  /// updated right after.
+  void _scheduleIssuesUpdate(String? issues) {
+    _pendingIssues = issues;
+    if (_isIssuesUpdateScheduled) return;
+    _isIssuesUpdateScheduled = true;
+    Future.microtask(() {
+      _isIssuesUpdateScheduled = false;
+      if (!mounted) return;
+      final issues = _pendingIssues;
+      if (issues == _shownIssues) return;
+      if (issues == null) {
+        _statusBarIssues.clearIssues(_shownIssues);
+      } else {
+        _statusBarIssues.showIssues(issues);
+      }
+      _shownIssues = issues;
+    });
   }
 
   /// Upgrades like the Upgrade button would: nothing happens while it is

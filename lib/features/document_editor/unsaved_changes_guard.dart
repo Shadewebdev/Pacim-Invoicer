@@ -231,8 +231,18 @@ class _UnsavedChangesGuardState extends ConsumerState<UnsavedChangesGuard> {
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
     final didPop = await Navigator.of(context).maybePop();
+    if (didPop || !mounted) return;
     // The route did not go anywhere, so the next attempt must ask again.
-    if (!didPop && mounted) setState(() => _mayPop = false);
+    setState(() => _mayPop = false);
+    // Nothing to pop back to, as when the editor was opened with `go` and
+    // Android back is pressed: go to the document type's list instead.
+    final type = ref
+        .read(documentEditorControllerProvider(widget.documentId))
+        .value
+        ?.document
+        .documentType;
+    if (type == null) return;
+    await goAfterLeaveGuard(context, ref, '/${type.routeSegment}');
   }
 
   Future<void> _onCloseRequested() async {

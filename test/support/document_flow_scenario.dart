@@ -1,8 +1,10 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pacim_invoicer/app/pacim_invoicer_app.dart';
+import 'package:pacim_invoicer/data/repository_providers.dart';
 import 'package:pacim_invoicer/features/document_editor/chain_breadcrumb/chain_breadcrumb.dart';
 import 'package:pacim_invoicer/features/document_editor/line_item_grid/line_item_grid.dart';
 import 'package:pacim_invoicer/features/pdf_export/pdf_export_service.dart';
@@ -11,11 +13,23 @@ import 'package:pacim_invoicer/shared/document_page_metrics.dart';
 import 'fake_pdf_output_target.dart';
 import 'test_provider_overrides.dart';
 
+/// Where the scenario keeps its documents.
+enum DocumentFlowStorage {
+  /// The test fakes.
+  fakes,
+
+  /// The real Drift repositories on an in-memory SQLite database.
+  drift,
+}
+
 /// Walks the whole product flow through the real app with in-memory storage:
 /// quotation, customer and items, upgrade, two partial deliveries, breadcrumb
 /// navigation and a PDF export. Shared by the integration test and the
 /// regular widget test, so CI runs it without a device.
-Future<void> runDocumentFlowScenario(WidgetTester tester) async {
+Future<void> runDocumentFlowScenario(
+  WidgetTester tester, {
+  DocumentFlowStorage storage = DocumentFlowStorage.fakes,
+}) async {
   tester.view.physicalSize = const Size(1400, 1000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -25,7 +39,14 @@ Future<void> runDocumentFlowScenario(WidgetTester tester) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        ...fakeStorageOverrides(),
+        ...switch (storage) {
+          DocumentFlowStorage.fakes => fakeStorageOverrides(),
+          DocumentFlowStorage.drift => [
+            databaseConnectionProvider.overrideWithValue(
+              NativeDatabase.memory(),
+            ),
+          ],
+        },
         pdfOutputTargetProvider.overrideWithValue(pdfTarget),
         sharesPdfInsteadOfSavingProvider.overrideWithValue(false),
         pdfDocumentBuilderProvider.overrideWithValue(fakePdfBuilder),

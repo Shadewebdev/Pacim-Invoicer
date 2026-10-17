@@ -1,12 +1,31 @@
+import 'package:drift/drift.dart'
+    show ApplyInterceptor, QueryExecutor, QueryInterceptor;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pacim_invoicer/data/local/drift_document_repository.dart';
 import 'package:pacim_invoicer/data/local/pacim_database.dart';
 import 'package:pacim_invoicer/domain/exceptions/document_exceptions.dart';
+import 'package:pacim_invoicer/domain/models/document_list_query.dart';
+import 'package:pacim_invoicer/domain/models/document_type.dart';
 
 import '../../support/document_builders.dart';
 
 import '../contract/document_repository_contract.dart';
+
+/// Records every SELECT statement the database runs.
+class _SelectLog extends QueryInterceptor {
+  final statements = <String>[];
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    statements.add(statement);
+    return executor.runSelect(statement, args);
+  }
+}
 
 void main() {
   late PacimDatabase database;
@@ -86,5 +105,30 @@ void main() {
         expect(stackTrace.toString(), contains('package:sqlite3/'));
       },
     );
+  });
+
+  test('listing and chain queries read only the summary columns', () async {
+    final log = _SelectLog();
+    database = PacimDatabase.forTesting(
+      NativeDatabase.memory().interceptWith(log),
+    );
+    final repository = DriftDocumentRepository(database);
+    await repository.saveDocument(buildTestDocument());
+    log.statements.clear();
+
+    final summaries = await repository
+        .watchDocumentSummaries(
+          const DocumentListQuery(documentType: DocumentType.quotation),
+        )
+        .first;
+    final chain = await repository.watchDocumentChain('chain-1').first;
+
+    expect(summaries.single.documentId, 'doc-1');
+    expect(chain.quotation?.documentId, 'doc-1');
+    expect(log.statements, hasLength(2));
+    for (final statement in log.statements) {
+      expect(statement, isNot(contains('payload_json')));
+      expect(statement, isNot(contains('*')));
+    }
   });
 }

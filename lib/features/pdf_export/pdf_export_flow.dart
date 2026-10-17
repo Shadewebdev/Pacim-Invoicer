@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/shell/status_bar_message_provider.dart';
 import '../../domain/models/business_document.dart';
 import '../../domain/models/validation_issue.dart';
+import '../../shared/error_reporting.dart';
 import 'pdf_export_service.dart';
 
 /// Exports [document] as a PDF, asking first when it has [issues]. Reports the
@@ -25,7 +26,8 @@ Future<void> exportDocumentAsPdf({
           .read(statusBarMessageProvider.notifier)
           .showMessage('Exported ${service.suggestedFileName(document)}');
     }
-  } on Object {
+  } on Object catch (error, stack) {
+    reportAndDescribeError(error, stack);
     if (!context.mounted) return;
     _showProblem(context, "Couldn't export ${document.documentNumber}");
   }
@@ -39,7 +41,8 @@ Future<void> printDocumentAsPdf({
 }) async {
   try {
     await ref.read(pdfExportServiceProvider).printDocument(document);
-  } on Object {
+  } on Object catch (error, stack) {
+    reportAndDescribeError(error, stack);
     if (!context.mounted) return;
     _showProblem(context, "Couldn't print ${document.documentNumber}");
   }

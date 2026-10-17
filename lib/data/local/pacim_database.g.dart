@@ -108,6 +108,17 @@ class $DocumentRowsTable extends DocumentRows
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _currencyFormatJsonMeta =
+      const VerificationMeta('currencyFormatJson');
+  @override
+  late final GeneratedColumn<String> currencyFormatJson =
+      GeneratedColumn<String>(
+        'currency_format_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
   static const VerificationMeta _lockedAtMeta = const VerificationMeta(
     'lockedAt',
   );
@@ -174,6 +185,7 @@ class $DocumentRowsTable extends DocumentRows
     issueDate,
     grandTotalMinor,
     currencyCode,
+    currencyFormatJson,
     lockedAt,
     updatedAt,
     schemaVersion,
@@ -280,6 +292,17 @@ class $DocumentRowsTable extends DocumentRows
     } else if (isInserting) {
       context.missing(_currencyCodeMeta);
     }
+    if (data.containsKey('currency_format_json')) {
+      context.handle(
+        _currencyFormatJsonMeta,
+        currencyFormatJson.isAcceptableOrUnknown(
+          data['currency_format_json']!,
+          _currencyFormatJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_currencyFormatJsonMeta);
+    }
     if (data.containsKey('locked_at')) {
       context.handle(
         _lockedAtMeta,
@@ -369,6 +392,10 @@ class $DocumentRowsTable extends DocumentRows
         DriftSqlType.string,
         data['${effectivePrefix}currency_code'],
       )!,
+      currencyFormatJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}currency_format_json'],
+      )!,
       lockedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}locked_at'],
@@ -408,6 +435,10 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
   final DateTime issueDate;
   final int grandTotalMinor;
   final String currencyCode;
+
+  /// The document's `CurrencyFormat` as JSON, so listings format each total
+  /// without decoding the payload.
+  final String currencyFormatJson;
   final DateTime? lockedAt;
   final DateTime updatedAt;
   final int schemaVersion;
@@ -423,6 +454,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
     required this.issueDate,
     required this.grandTotalMinor,
     required this.currencyCode,
+    required this.currencyFormatJson,
     this.lockedAt,
     required this.updatedAt,
     required this.schemaVersion,
@@ -443,6 +475,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
     map['issue_date'] = Variable<DateTime>(issueDate);
     map['grand_total_minor'] = Variable<int>(grandTotalMinor);
     map['currency_code'] = Variable<String>(currencyCode);
+    map['currency_format_json'] = Variable<String>(currencyFormatJson);
     if (!nullToAbsent || lockedAt != null) {
       map['locked_at'] = Variable<DateTime>(lockedAt);
     }
@@ -466,6 +499,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
       issueDate: Value(issueDate),
       grandTotalMinor: Value(grandTotalMinor),
       currencyCode: Value(currencyCode),
+      currencyFormatJson: Value(currencyFormatJson),
       lockedAt: lockedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lockedAt),
@@ -491,6 +525,9 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
       issueDate: serializer.fromJson<DateTime>(json['issueDate']),
       grandTotalMinor: serializer.fromJson<int>(json['grandTotalMinor']),
       currencyCode: serializer.fromJson<String>(json['currencyCode']),
+      currencyFormatJson: serializer.fromJson<String>(
+        json['currencyFormatJson'],
+      ),
       lockedAt: serializer.fromJson<DateTime?>(json['lockedAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       schemaVersion: serializer.fromJson<int>(json['schemaVersion']),
@@ -511,6 +548,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
       'issueDate': serializer.toJson<DateTime>(issueDate),
       'grandTotalMinor': serializer.toJson<int>(grandTotalMinor),
       'currencyCode': serializer.toJson<String>(currencyCode),
+      'currencyFormatJson': serializer.toJson<String>(currencyFormatJson),
       'lockedAt': serializer.toJson<DateTime?>(lockedAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'schemaVersion': serializer.toJson<int>(schemaVersion),
@@ -529,6 +567,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
     DateTime? issueDate,
     int? grandTotalMinor,
     String? currencyCode,
+    String? currencyFormatJson,
     Value<DateTime?> lockedAt = const Value.absent(),
     DateTime? updatedAt,
     int? schemaVersion,
@@ -546,6 +585,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
     issueDate: issueDate ?? this.issueDate,
     grandTotalMinor: grandTotalMinor ?? this.grandTotalMinor,
     currencyCode: currencyCode ?? this.currencyCode,
+    currencyFormatJson: currencyFormatJson ?? this.currencyFormatJson,
     lockedAt: lockedAt.present ? lockedAt.value : this.lockedAt,
     updatedAt: updatedAt ?? this.updatedAt,
     schemaVersion: schemaVersion ?? this.schemaVersion,
@@ -577,6 +617,9 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
       currencyCode: data.currencyCode.present
           ? data.currencyCode.value
           : this.currencyCode,
+      currencyFormatJson: data.currencyFormatJson.present
+          ? data.currencyFormatJson.value
+          : this.currencyFormatJson,
       lockedAt: data.lockedAt.present ? data.lockedAt.value : this.lockedAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       schemaVersion: data.schemaVersion.present
@@ -603,6 +646,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
           ..write('issueDate: $issueDate, ')
           ..write('grandTotalMinor: $grandTotalMinor, ')
           ..write('currencyCode: $currencyCode, ')
+          ..write('currencyFormatJson: $currencyFormatJson, ')
           ..write('lockedAt: $lockedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('schemaVersion: $schemaVersion, ')
@@ -623,6 +667,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
     issueDate,
     grandTotalMinor,
     currencyCode,
+    currencyFormatJson,
     lockedAt,
     updatedAt,
     schemaVersion,
@@ -642,6 +687,7 @@ class DocumentRow extends DataClass implements Insertable<DocumentRow> {
           other.issueDate == this.issueDate &&
           other.grandTotalMinor == this.grandTotalMinor &&
           other.currencyCode == this.currencyCode &&
+          other.currencyFormatJson == this.currencyFormatJson &&
           other.lockedAt == this.lockedAt &&
           other.updatedAt == this.updatedAt &&
           other.schemaVersion == this.schemaVersion &&
@@ -659,6 +705,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
   final Value<DateTime> issueDate;
   final Value<int> grandTotalMinor;
   final Value<String> currencyCode;
+  final Value<String> currencyFormatJson;
   final Value<DateTime?> lockedAt;
   final Value<DateTime> updatedAt;
   final Value<int> schemaVersion;
@@ -675,6 +722,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
     this.issueDate = const Value.absent(),
     this.grandTotalMinor = const Value.absent(),
     this.currencyCode = const Value.absent(),
+    this.currencyFormatJson = const Value.absent(),
     this.lockedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.schemaVersion = const Value.absent(),
@@ -692,6 +740,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
     required DateTime issueDate,
     required int grandTotalMinor,
     required String currencyCode,
+    required String currencyFormatJson,
     this.lockedAt = const Value.absent(),
     required DateTime updatedAt,
     required int schemaVersion,
@@ -706,6 +755,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
        issueDate = Value(issueDate),
        grandTotalMinor = Value(grandTotalMinor),
        currencyCode = Value(currencyCode),
+       currencyFormatJson = Value(currencyFormatJson),
        updatedAt = Value(updatedAt),
        schemaVersion = Value(schemaVersion),
        searchText = Value(searchText),
@@ -720,6 +770,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
     Expression<DateTime>? issueDate,
     Expression<int>? grandTotalMinor,
     Expression<String>? currencyCode,
+    Expression<String>? currencyFormatJson,
     Expression<DateTime>? lockedAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? schemaVersion,
@@ -737,6 +788,8 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
       if (issueDate != null) 'issue_date': issueDate,
       if (grandTotalMinor != null) 'grand_total_minor': grandTotalMinor,
       if (currencyCode != null) 'currency_code': currencyCode,
+      if (currencyFormatJson != null)
+        'currency_format_json': currencyFormatJson,
       if (lockedAt != null) 'locked_at': lockedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (schemaVersion != null) 'schema_version': schemaVersion,
@@ -756,6 +809,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
     Value<DateTime>? issueDate,
     Value<int>? grandTotalMinor,
     Value<String>? currencyCode,
+    Value<String>? currencyFormatJson,
     Value<DateTime?>? lockedAt,
     Value<DateTime>? updatedAt,
     Value<int>? schemaVersion,
@@ -773,6 +827,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
       issueDate: issueDate ?? this.issueDate,
       grandTotalMinor: grandTotalMinor ?? this.grandTotalMinor,
       currencyCode: currencyCode ?? this.currencyCode,
+      currencyFormatJson: currencyFormatJson ?? this.currencyFormatJson,
       lockedAt: lockedAt ?? this.lockedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       schemaVersion: schemaVersion ?? this.schemaVersion,
@@ -812,6 +867,9 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
     if (currencyCode.present) {
       map['currency_code'] = Variable<String>(currencyCode.value);
     }
+    if (currencyFormatJson.present) {
+      map['currency_format_json'] = Variable<String>(currencyFormatJson.value);
+    }
     if (lockedAt.present) {
       map['locked_at'] = Variable<DateTime>(lockedAt.value);
     }
@@ -845,6 +903,7 @@ class DocumentRowsCompanion extends UpdateCompanion<DocumentRow> {
           ..write('issueDate: $issueDate, ')
           ..write('grandTotalMinor: $grandTotalMinor, ')
           ..write('currencyCode: $currencyCode, ')
+          ..write('currencyFormatJson: $currencyFormatJson, ')
           ..write('lockedAt: $lockedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('schemaVersion: $schemaVersion, ')
@@ -1617,7 +1676,7 @@ abstract class _$PacimDatabase extends GeneratedDatabase {
   );
   late final Index documentsTypeNumber = Index(
     'documents_type_number',
-    'CREATE INDEX documents_type_number ON documents (document_type, document_number)',
+    'CREATE UNIQUE INDEX documents_type_number ON documents (document_type, document_number)',
   );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -1645,6 +1704,7 @@ typedef $$DocumentRowsTableCreateCompanionBuilder =
       required DateTime issueDate,
       required int grandTotalMinor,
       required String currencyCode,
+      required String currencyFormatJson,
       Value<DateTime?> lockedAt,
       required DateTime updatedAt,
       required int schemaVersion,
@@ -1663,6 +1723,7 @@ typedef $$DocumentRowsTableUpdateCompanionBuilder =
       Value<DateTime> issueDate,
       Value<int> grandTotalMinor,
       Value<String> currencyCode,
+      Value<String> currencyFormatJson,
       Value<DateTime?> lockedAt,
       Value<DateTime> updatedAt,
       Value<int> schemaVersion,
@@ -1722,6 +1783,11 @@ class $$DocumentRowsTableFilterComposer
 
   ColumnFilters<String> get currencyCode => $composableBuilder(
     column: $table.currencyCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get currencyFormatJson => $composableBuilder(
+    column: $table.currencyFormatJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1805,6 +1871,11 @@ class $$DocumentRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get currencyFormatJson => $composableBuilder(
+    column: $table.currencyFormatJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get lockedAt => $composableBuilder(
     column: $table.lockedAt,
     builder: (column) => ColumnOrderings(column),
@@ -1881,6 +1952,11 @@ class $$DocumentRowsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get currencyFormatJson => $composableBuilder(
+    column: $table.currencyFormatJson,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get lockedAt =>
       $composableBuilder(column: $table.lockedAt, builder: (column) => column);
 
@@ -1943,6 +2019,7 @@ class $$DocumentRowsTableTableManager
                 Value<DateTime> issueDate = const Value.absent(),
                 Value<int> grandTotalMinor = const Value.absent(),
                 Value<String> currencyCode = const Value.absent(),
+                Value<String> currencyFormatJson = const Value.absent(),
                 Value<DateTime?> lockedAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> schemaVersion = const Value.absent(),
@@ -1959,6 +2036,7 @@ class $$DocumentRowsTableTableManager
                 issueDate: issueDate,
                 grandTotalMinor: grandTotalMinor,
                 currencyCode: currencyCode,
+                currencyFormatJson: currencyFormatJson,
                 lockedAt: lockedAt,
                 updatedAt: updatedAt,
                 schemaVersion: schemaVersion,
@@ -1977,6 +2055,7 @@ class $$DocumentRowsTableTableManager
                 required DateTime issueDate,
                 required int grandTotalMinor,
                 required String currencyCode,
+                required String currencyFormatJson,
                 Value<DateTime?> lockedAt = const Value.absent(),
                 required DateTime updatedAt,
                 required int schemaVersion,
@@ -1993,6 +2072,7 @@ class $$DocumentRowsTableTableManager
                 issueDate: issueDate,
                 grandTotalMinor: grandTotalMinor,
                 currencyCode: currencyCode,
+                currencyFormatJson: currencyFormatJson,
                 lockedAt: lockedAt,
                 updatedAt: updatedAt,
                 schemaVersion: schemaVersion,

@@ -18,6 +18,18 @@ void main() {
   );
   final jpy = myr.copyWith(currencyCode: 'JPY', symbol: '¥', decimalPlaces: 0);
 
+  test('separators must be present and differ', () {
+    expect(myr.hasDistinctSeparators, isTrue);
+    expect(eur.hasDistinctSeparators, isTrue);
+    expect(myr.copyWith(thousandsSeparator: '').hasDistinctSeparators, isTrue);
+    expect(
+      myr.copyWith(thousandsSeparator: '.').hasDistinctSeparators,
+      isFalse,
+    );
+    expect(myr.copyWith(decimalSeparator: ',').hasDistinctSeparators, isFalse);
+    expect(myr.copyWith(decimalSeparator: '').hasDistinctSeparators, isFalse);
+  });
+
   group('formatMoney', () {
     test('default format', () {
       expect(myr.currencyCode, 'MYR');

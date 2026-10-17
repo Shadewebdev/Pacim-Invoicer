@@ -172,6 +172,45 @@ void main() {
     });
   });
 
+  test('the next successful save clears the save failure message', () {
+    _withHarness(buildTestDocument(), (async, harness) {
+      harness.container.listen(statusBarMessageProvider, (_, _) {});
+      harness.repository.failNextSave = true;
+      harness.controller.updateNotes('x');
+      async.elapse(const Duration(seconds: 2));
+      async.flushMicrotasks();
+      expect(
+        harness.container.read(statusBarMessageProvider),
+        "Couldn't save — Retry",
+      );
+
+      harness.controller.updateNotes('y');
+      async.elapse(const Duration(seconds: 2));
+      async.flushMicrotasks();
+
+      expect(harness.state.saveStatus, SaveStatus.saved);
+      expect(harness.container.read(statusBarMessageProvider), isNull);
+    });
+  });
+
+  test('a successful save leaves other status bar messages alone', () {
+    _withHarness(buildTestDocument(), (async, harness) {
+      harness.container.listen(statusBarMessageProvider, (_, _) {});
+      harness.container
+          .read(statusBarMessageProvider.notifier)
+          .showMessage('Exported QT-2026-0001.pdf');
+
+      harness.controller.updateNotes('y');
+      async.elapse(const Duration(seconds: 2));
+      async.flushMicrotasks();
+
+      expect(
+        harness.container.read(statusBarMessageProvider),
+        'Exported QT-2026-0001.pdf',
+      );
+    });
+  });
+
   test('a locked document found on save reloads as saved and locked', () {
     _withHarness(buildTestDocument(), (async, harness) {
       harness.controller.updateNotes('mine');

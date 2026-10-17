@@ -11,13 +11,34 @@ const int _jpegQualityStep = 10;
 const double _downscaleFactor = 0.75;
 const int _minimumEdgePixels = 64;
 
-class ImageImportException implements Exception {
-  const ImageImportException();
+/// Larger images are refused before they are decoded, because decoding needs
+/// about 4 bytes per pixel and could exhaust memory (on web especially).
+const int maximumImportPixels = 40 * 1000 * 1000;
 
-  String get message => "This file isn't a supported image";
+class ImageImportException implements Exception {
+  const ImageImportException([
+    this.message = "This file isn't a supported image",
+  ]);
+
+  const ImageImportException.tooLarge() : message = 'This image is too large';
+
+  final String message;
 
   @override
   String toString() => 'ImageImportException: $message';
+}
+
+/// Whether [bytes] declare more than [maximumImportPixels], read from the
+/// image header only. False when the header cannot be read; the full decode
+/// then reports the problem.
+bool isImageTooLargeToImport(Uint8List bytes) {
+  try {
+    final info = img.findDecoderForData(bytes)?.startDecode(bytes);
+    if (info == null) return false;
+    return info.width * info.height > maximumImportPixels;
+  } on Object {
+    return false;
+  }
 }
 
 /// Downscales logo and signature images before they are stored, so they stay
@@ -30,8 +51,11 @@ class ImageImportService {
   /// quality lowered until the result is at most 250 KB.
   ///
   /// Throws [ImageImportException] when [originalBytes] is not a decodable
-  /// image.
+  /// image or declares more than 40 megapixels.
   Future<Uint8List> prepareImageForStorage(Uint8List originalBytes) async {
+    if (isImageTooLargeToImport(originalBytes)) {
+      throw const ImageImportException.tooLarge();
+    }
     final prepared = await compute(_prepareImageBytes, originalBytes);
     if (prepared == null) throw const ImageImportException();
     return prepared;

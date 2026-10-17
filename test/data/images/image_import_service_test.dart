@@ -28,8 +28,52 @@ Uint8List _noisyRgbaPng(int width, int height, {required bool transparent}) {
   return img.encodePng(image);
 }
 
+/// A real 1x1 PNG whose header claims [width] x [height], so only a decoder
+/// that trusts the header before decoding would try to allocate it.
+Uint8List _pngClaimingSize(int width, int height) {
+  final bytes = Uint8List.fromList(
+    img.encodePng(img.Image(width: 1, height: 1)),
+  );
+  final header = ByteData.sublistView(bytes);
+  // The IHDR chunk data starts at byte 16: width, then height.
+  header.setUint32(16, width);
+  header.setUint32(20, height);
+  // Its CRC covers the chunk type and data, bytes 12 to 28.
+  header.setUint32(29, _crc32(bytes.sublist(12, 29)));
+  return bytes;
+}
+
+int _crc32(List<int> data) {
+  var crc = 0xFFFFFFFF;
+  for (final byte in data) {
+    crc ^= byte;
+    for (var bit = 0; bit < 8; bit++) {
+      crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
+    }
+  }
+  return crc ^ 0xFFFFFFFF;
+}
+
 void main() {
   const service = ImageImportService();
+
+  test('an image over 40 megapixels is refused before decoding', () async {
+    await expectLater(
+      service.prepareImageForStorage(_pngClaimingSize(10000, 5000)),
+      throwsA(
+        isA<ImageImportException>().having(
+          (exception) => exception.message,
+          'message',
+          'This image is too large',
+        ),
+      ),
+    );
+  });
+
+  test('an image of exactly 40 megapixels is not refused as too large', () {
+    expect(isImageTooLargeToImport(_pngClaimingSize(8000, 5000)), isFalse);
+    expect(isImageTooLargeToImport(_pngClaimingSize(8000, 5001)), isTrue);
+  });
 
   test('a 3000x1000 image is resized to 600x200', () async {
     final prepared = await service.prepareImageForStorage(

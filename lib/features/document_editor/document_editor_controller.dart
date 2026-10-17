@@ -16,6 +16,7 @@ import '../../domain/models/pricing_terms.dart';
 import '../../domain/models/signature_block.dart';
 import '../../domain/services/document_factory.dart';
 import '../../domain/services/document_totals_calculator.dart';
+import '../../shared/error_reporting.dart';
 import 'delivery_validation_context.dart';
 import 'document_editor_state.dart';
 
@@ -47,6 +48,10 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
   /// The document as last loaded from or written to storage.
   BusinessDocument? _lastSavedDocument;
 
+  /// True once the stored document was deleted elsewhere. Nothing is saved
+  /// after that, so the document is not written back.
+  bool _isDocumentMissing = false;
+
   @override
   Future<DocumentEditorState> build() async {
     _repository = ref.read(documentRepositoryProvider);
@@ -58,7 +63,7 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
     _lastSavedDocument = loaded.document;
     _storedDocumentSubscription = _repository
         .watchDocument(documentId)
-        .listen(_onStoredDocument, onError: (Object _) {});
+        .listen(_onStoredDocument, onError: _onStoredDocumentError);
     return loaded;
   }
 
@@ -255,6 +260,7 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
   // Internals.
 
   void _publish(DocumentEditorState editorState) {
+    if (_isDocumentMissing) return;
     _latestState = editorState;
     if (editorState.saveStatus == SaveStatus.saved) {
       _lastSavedDocument = editorState.document;
@@ -264,7 +270,7 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
 
   void _edit(BusinessDocument Function(BusinessDocument) change) {
     final current = state.value;
-    if (current == null || current.isLocked) return;
+    if (current == null || current.isLocked || _isDocumentMissing) return;
     final changed = change(current.document);
     if (changed == current.document) return;
     _editCount++;
@@ -313,6 +319,15 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
     );
   }
 
+  /// A deleted document turns the state into an error, so the page shows
+  /// that it no longer exists. Other stream errors leave the editor as is.
+  void _onStoredDocumentError(Object error, StackTrace stackTrace) {
+    if (error is! DocumentNotFoundException || !ref.mounted) return;
+    _isDocumentMissing = true;
+    _autosaveTimer?.cancel();
+    state = AsyncError(error, stackTrace);
+  }
+
   void _onStoredDocument(BusinessDocument stored) {
     final current = state.value;
     if (current == null ||
@@ -337,7 +352,7 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
 
   /// Runs saves one after another so two never overlap.
   Future<void> _enqueueSave() {
-    if (_isAutosaveHeld) return Future<void>.value();
+    if (_isAutosaveHeld || _isDocumentMissing) return Future<void>.value();
     final previous = _lastSave;
     // A failed earlier save must never block the ones after it.
     final saved = previous
@@ -360,6 +375,9 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
     try {
       await _repository.saveDocument(toSave);
       if (!ref.mounted) return;
+      ref
+          .read(statusBarMessageProvider.notifier)
+          .clearMessage(_saveFailedMessage);
       final latest = state.requireValue;
       _publish(
         editCountAtStart == _editCount
@@ -369,10 +387,12 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
     } on DocumentLockedException {
       try {
         await _reloadStoredDocument();
-      } on Object {
+      } on Object catch (error, stack) {
+        reportAndDescribeError(error, stack);
         _markSaveFailed();
       }
-    } on Object {
+    } on Object catch (error, stack) {
+      reportAndDescribeError(error, stack);
       _markSaveFailed();
     }
   }
@@ -401,7 +421,12 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
         current != null &&
         (current.saveStatus == SaveStatus.pending ||
             current.saveStatus == SaveStatus.failed);
-    if (current == null || !hasUnsavedEdits || _isAutosaveHeld) return;
+    if (current == null ||
+        !hasUnsavedEdits ||
+        _isAutosaveHeld ||
+        _isDocumentMissing) {
+      return;
+    }
     final toSave = current.document.copyWith(updatedAt: _clock());
     final repository = _repository;
     // Nothing is left to report to once the provider is gone.
@@ -413,12 +438,13 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
   }
 }
 
-final documentEditorControllerProvider =
-    AsyncNotifierProvider.family<
-      DocumentEditorController,
-      DocumentEditorState,
-      String
-    >(DocumentEditorController.new, retry: _retryUnlessDocumentIsMissing);
+/// Disposed when the editor stops watching it, which saves pending edits and
+/// stops watching the stored document.
+final documentEditorControllerProvider = AsyncNotifierProvider.autoDispose
+    .family<DocumentEditorController, DocumentEditorState, String>(
+      DocumentEditorController.new,
+      retry: _retryUnlessDocumentIsMissing,
+    );
 
 /// Riverpod's default retry, except that a document that does not exist fails
 /// once: retrying cannot make it appear.

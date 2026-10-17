@@ -154,6 +154,7 @@ class LineItemRow extends StatefulWidget {
     required this.onDuplicate,
     required this.onDelete,
     this.remainingToDeliver,
+    this.quantityIssue,
     super.key,
   });
 
@@ -167,6 +168,10 @@ class LineItemRow extends StatefulWidget {
   /// Set on a delivery order line whose quantity exceeds what is left to
   /// deliver on its sales order line.
   final int? remainingToDeliver;
+
+  /// The validation message for this line's quantity, such as a zero
+  /// quantity; the quantity cell then shows an error outline.
+  final String? quantityIssue;
 
   final FocusNode Function(LineItemColumn column) focusNodeFor;
   final GridCellCommitHandle Function(LineItemColumn column) commitHandleFor;
@@ -385,10 +390,14 @@ class _LineItemRowState extends State<LineItemRow> {
           commitHandle: widget.commitHandleFor(column),
           readOnly: widget.isLocked,
           isMultiline: column == LineItemColumn.description,
+          isNumber: isNumber,
           selectAllOnFocus: isNumber,
           textAlign: isNumber ? TextAlign.end : TextAlign.start,
           placeholder: column == LineItemColumn.description
               ? 'Description'
+              : null,
+          issueMessage: column == LineItemColumn.quantity
+              ? widget.quantityIssue
               : null,
         );
         if (column != LineItemColumn.quantity) return field;

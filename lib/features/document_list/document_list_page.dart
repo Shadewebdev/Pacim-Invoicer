@@ -11,15 +11,14 @@ import '../../app/theme/app_typography.dart';
 import '../../domain/exceptions/document_exceptions.dart';
 import '../../data/repository_providers.dart';
 import '../../domain/models/business_document.dart';
-import '../../domain/models/currency_format.dart';
 import '../../domain/models/document_summary.dart';
 import '../../domain/models/document_type.dart';
 import '../../domain/models/validation_issue.dart';
+import '../../shared/error_reporting.dart';
 import '../../shared/formatting/date_formatter.dart';
 import '../document_editor/delivery_validation_context.dart';
 import '../document_editor/document_commands.dart';
 import '../pdf_export/pdf_export_flow.dart';
-import '../settings/settings_controller.dart';
 import 'document_list_controller.dart';
 import 'document_summary_table.dart';
 
@@ -126,7 +125,8 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
       _showProblem(exception.reason);
     } on DocumentLockedException {
       _showProblem('This document is locked, so it can\'t be changed.');
-    } on Object {
+    } on Object catch (error, stack) {
+      reportAndDescribeError(error, stack);
       _showProblem(failureMessage);
     }
   }
@@ -194,7 +194,8 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
               salesOrder: deliveryContext.salesOrder,
               otherDeliveryOrders: deliveryContext.otherDeliveryOrders,
             );
-      } on Object {
+      } on Object catch (error, stack) {
+        reportAndDescribeError(error, stack);
         _showProblem("Couldn't export ${summary.documentNumber}");
         return;
       }
@@ -243,7 +244,8 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
       return await ref
           .read(documentCommandsProvider)
           .findUpgradeBlockerFor(summary.documentId);
-    } on Object {
+    } on Object catch (error, stack) {
+      reportAndDescribeError(error, stack);
       return "Couldn't check whether this can be upgraded";
     }
   }
@@ -252,13 +254,6 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
   Widget build(BuildContext context) {
     final query = ref.watch(documentListControllerProvider(_type));
     final summariesValue = ref.watch(documentSummariesProvider(_type));
-    final currencyFormat =
-        ref
-            .watch(settingsControllerProvider)
-            .value
-            ?.pricingTerms
-            .currencyFormat ??
-        CurrencyFormat.defaultFormat;
 
     ref.listen(documentCountProvider(_type), (previous, next) {
       final count = next.value;
@@ -327,7 +322,6 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
                   return DocumentSummaryTable(
                     summaries: summaries,
                     documentType: _type,
-                    currencyFormat: currencyFormat,
                     sortField: query.sortField,
                     sortDescending: query.sortDescending,
                     canLoadMore: summaries.length >= query.limit,

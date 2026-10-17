@@ -30,9 +30,11 @@ class GridCellField extends StatefulWidget {
     this.commitHandle,
     this.readOnly = false,
     this.isMultiline = false,
+    this.isNumber = false,
     this.selectAllOnFocus = false,
     this.textAlign = TextAlign.start,
     this.placeholder,
+    this.issueMessage,
     super.key,
   });
 
@@ -48,9 +50,17 @@ class GridCellField extends StatefulWidget {
   final GridCellCommitHandle? commitHandle;
   final bool readOnly;
   final bool isMultiline;
+
+  /// Asks touch keyboards for digits, a decimal point and a minus sign.
+  final bool isNumber;
   final bool selectAllOnFocus;
   final TextAlign textAlign;
   final String? placeholder;
+
+  /// A validation problem with the stored value, such as a zero quantity. An
+  /// editable cell then has an error outline with the message as its
+  /// tooltip; just-rejected typed text takes precedence.
+  final String? issueMessage;
 
   static const invalidNumberMessage = 'Enter a number';
 
@@ -183,7 +193,8 @@ class _GridCellFieldState extends State<GridCellField> {
     final tokens = DocumentPageStyles.tokens;
     final isEditable = !widget.readOnly;
     final isFocused = widget.focusNode.hasFocus;
-    final outlineColor = _hasError
+    final issueMessage = isEditable ? widget.issueMessage : null;
+    final outlineColor = _hasError || issueMessage != null
         ? Theme.of(context).colorScheme.error
         : !isEditable
         ? Colors.transparent
@@ -216,6 +227,11 @@ class _GridCellFieldState extends State<GridCellField> {
             cursorColor: tokens.action,
             keyboardType: widget.isMultiline
                 ? TextInputType.multiline
+                : widget.isNumber
+                ? const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  )
                 : TextInputType.text,
             textInputAction: widget.isMultiline
                 ? TextInputAction.newline
@@ -242,8 +258,11 @@ class _GridCellFieldState extends State<GridCellField> {
       ),
     );
 
-    if (!_hasError) return field;
-    return Tooltip(message: GridCellField.invalidNumberMessage, child: field);
+    final tooltip = _hasError
+        ? GridCellField.invalidNumberMessage
+        : issueMessage;
+    if (tooltip == null) return field;
+    return Tooltip(message: tooltip, child: field);
   }
 }
 

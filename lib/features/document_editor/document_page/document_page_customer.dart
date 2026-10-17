@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/models/document_type.dart';
+import '../../../domain/models/validation_issue.dart';
 import '../document_editor_controller.dart';
 import 'document_page_header.dart' show splitAddressLines;
 import 'document_page_styles.dart';
@@ -23,6 +24,13 @@ class DocumentPageCustomer extends ConsumerWidget {
     );
     final customer = document.customerDetails;
     final isDeliveryOrder = document.documentType == DocumentType.deliveryOrder;
+    final hasMissingName = ref.watch(
+      documentEditorControllerProvider(documentId).select(
+        (state) => (state.value?.validationIssues ?? const []).any(
+          (issue) => issue.kind == ValidationIssueKind.missingCustomerName,
+        ),
+      ),
+    );
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -41,6 +49,11 @@ class DocumentPageCustomer extends ConsumerWidget {
                 placeholder: 'Customer name',
                 readOnly: isLocked,
                 style: DocumentPageStyles.emphasis,
+                issueMessage: hasMissingName
+                    ? const ValidationIssue(
+                        kind: ValidationIssueKind.missingCustomerName,
+                      ).message
+                    : null,
                 onCommitted: (value) => controller.updateCustomerDetails(
                   customer.copyWith(customerName: value),
                 ),

@@ -6,6 +6,7 @@ import 'package:pacim_invoicer/data/payload/document_payload_migrator.dart';
 import 'package:pacim_invoicer/data/repositories/document_repository.dart';
 import 'package:pacim_invoicer/domain/exceptions/document_exceptions.dart';
 import 'package:pacim_invoicer/domain/models/business_document.dart';
+import 'package:pacim_invoicer/domain/models/currency_format.dart';
 import 'package:pacim_invoicer/domain/models/document_chain.dart';
 import 'package:pacim_invoicer/domain/models/document_list_query.dart';
 import 'package:pacim_invoicer/domain/models/document_summary.dart';
@@ -30,17 +31,39 @@ class DriftDocumentRepository implements DocumentRepository {
   Stream<List<DocumentSummary>> watchDocumentSummaries(
     DocumentListQuery query,
   ) {
-    final statement = _database.select(_database.documentRows)
-      ..where((row) => _matchesQuery(row, query))
+    final table = _database.documentRows;
+    final statement = _selectSummaries()
+      ..where(_matchesQuery(table, query))
       ..orderBy([
-        (row) => _orderingTerm(row, query),
-        (row) => OrderingTerm.asc(row.documentId),
+        _orderingTerm(table, query),
+        OrderingTerm.asc(table.documentId),
       ])
       ..limit(query.limit);
     return statement.watch().map(
-      (rows) => rows.map(_summaryFromRow).toList(growable: false),
+      (rows) => rows.map(_summaryFromResult).toList(growable: false),
     );
   }
+
+  /// The summary columns only, so listings never read the payload.
+  List<Expression<Object>> get _summaryColumns {
+    final table = _database.documentRows;
+    return [
+      table.documentId,
+      table.documentType,
+      table.documentNumber,
+      table.chainId,
+      table.sourceDocumentId,
+      table.customerName,
+      table.issueDate,
+      table.grandTotalMinor,
+      table.currencyFormatJson,
+      table.lockedAt,
+      table.updatedAt,
+    ];
+  }
+
+  JoinedSelectStatement<$DocumentRowsTable, DocumentRow> _selectSummaries() =>
+      _database.selectOnly(_database.documentRows)..addColumns(_summaryColumns);
 
   @override
   Stream<int> watchDocumentCount(DocumentListQuery query) {
@@ -132,11 +155,12 @@ class DriftDocumentRepository implements DocumentRepository {
 
   @override
   Stream<DocumentChain> watchDocumentChain(String chainId) {
-    final statement = _database.select(_database.documentRows)
-      ..where((row) => row.chainId.equals(chainId))
-      ..orderBy([(row) => OrderingTerm.asc(row.documentNumber)]);
+    final table = _database.documentRows;
+    final statement = _selectSummaries()
+      ..where(table.chainId.equals(chainId))
+      ..orderBy([OrderingTerm.asc(table.documentNumber)]);
     return statement.watch().map((rows) {
-      final summaries = rows.map(_summaryFromRow).toList();
+      final summaries = rows.map(_summaryFromResult).toList();
       DocumentSummary? firstOfType(DocumentType type) {
         for (final summary in summaries) {
           if (summary.documentType == type) return summary;
@@ -164,6 +188,21 @@ class DriftDocumentRepository implements DocumentRepository {
       ..orderBy([(row) => OrderingTerm.asc(row.documentNumber)]);
     final rows = await statement.get();
     return rows.map(_documentFromRow).toList(growable: false);
+  }
+
+  @override
+  Future<bool> documentNumberExists(
+    DocumentType type,
+    String documentNumber,
+  ) async {
+    final statement = _database.selectOnly(_database.documentRows)
+      ..addColumns([_database.documentRows.documentId])
+      ..where(
+        _database.documentRows.documentType.equals(type.name) &
+            _database.documentRows.documentNumber.equals(documentNumber),
+      )
+      ..limit(1);
+    return (await statement.get()).isNotEmpty;
   }
 
   @override
@@ -318,6 +357,9 @@ class DriftDocumentRepository implements DocumentRepository {
       issueDate: document.issueDate,
       grandTotalMinor: _totalsCalculator.calculate(document).grandTotalMinor,
       currencyCode: document.pricingTerms.currencyFormat.currencyCode,
+      currencyFormatJson: jsonEncode(
+        document.pricingTerms.currencyFormat.toJson(),
+      ),
       lockedAt: Value(document.lockedAt),
       updatedAt: document.updatedAt,
       schemaVersion: document.schemaVersion,
@@ -340,19 +382,25 @@ class DriftDocumentRepository implements DocumentRepository {
     );
   }
 
-  DocumentSummary _summaryFromRow(DocumentRow row) {
+  DocumentSummary _summaryFromResult(TypedResult result) {
+    final table = _database.documentRows;
     return DocumentSummary(
-      documentId: row.documentId,
-      documentType: DocumentType.values.byName(row.documentType),
-      documentNumber: row.documentNumber,
-      chainId: row.chainId,
-      sourceDocumentId: row.sourceDocumentId,
-      customerName: row.customerName,
-      issueDate: row.issueDate,
-      grandTotalMinor: row.grandTotalMinor,
-      currencyCode: row.currencyCode,
-      isLocked: row.lockedAt != null,
-      updatedAt: row.updatedAt,
+      documentId: result.read(table.documentId)!,
+      documentType: DocumentType.values.byName(
+        result.read(table.documentType)!,
+      ),
+      documentNumber: result.read(table.documentNumber)!,
+      chainId: result.read(table.chainId)!,
+      sourceDocumentId: result.read(table.sourceDocumentId),
+      customerName: result.read(table.customerName)!,
+      issueDate: result.read(table.issueDate)!,
+      grandTotalMinor: result.read(table.grandTotalMinor)!,
+      currencyFormat: CurrencyFormat.fromJson(
+        jsonDecode(result.read(table.currencyFormatJson)!)
+            as Map<String, dynamic>,
+      ),
+      isLocked: result.read(table.lockedAt) != null,
+      updatedAt: result.read(table.updatedAt)!,
     );
   }
 }

@@ -76,29 +76,32 @@ class PricingPropertiesSection extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: SettingsTextField(
+              child: SettingsParsedField<CurrencyFormat>(
                 key: ValueKey(keyed('thousandsSeparator')),
                 label: 'Thousands',
-                value: currency.thousandsSeparator,
+                initialText: currency.thousandsSeparator,
+                errorText: 'Use a different separator from the decimal one',
                 isEnabled: isEnabled,
-                onChanged: (value) =>
-                    editCurrency(currency.copyWith(thousandsSeparator: value)),
+                parse: (text) {
+                  final changed = currency.copyWith(thousandsSeparator: text);
+                  return changed.hasDistinctSeparators ? changed : null;
+                },
+                onParsed: editCurrency,
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: SettingsParsedField<String>(
+              child: SettingsParsedField<CurrencyFormat>(
                 key: ValueKey(keyed('decimalSeparator')),
                 label: 'Decimal',
                 initialText: currency.decimalSeparator,
-                errorText: 'Enter a separator',
+                errorText: 'Use a different separator from the thousands one',
                 isEnabled: isEnabled,
-                parse: (text) =>
-                    text.isEmpty || text == currency.thousandsSeparator
-                    ? null
-                    : text,
-                onParsed: (value) =>
-                    editCurrency(currency.copyWith(decimalSeparator: value)),
+                parse: (text) {
+                  final changed = currency.copyWith(decimalSeparator: text);
+                  return changed.hasDistinctSeparators ? changed : null;
+                },
+                onParsed: editCurrency,
               ),
             ),
           ],

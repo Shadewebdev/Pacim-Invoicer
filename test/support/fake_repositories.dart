@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:pacim_invoicer/data/repositories/asset_repository.dart';
@@ -82,8 +83,11 @@ class FakeAssetRepository implements AssetRepository {
   Future<Uint8List?> loadImage(String assetId) async => storedImages[assetId];
 }
 
+/// Mirrors `DriftNumberSequenceRepository`: year 0 holds the highest
+/// sequence ever issued for a type, and each year's entry the highest issued
+/// in that year; every allocation raises both.
 class FakeNumberSequenceRepository implements NumberSequenceRepository {
-  final Map<DocumentType, int> lastSequenceByType = {};
+  final Map<(DocumentType, int), int> _lastSequenceByTypeAndYear = {};
 
   @override
   Future<int> allocateNextSequence(
@@ -91,10 +95,21 @@ class FakeNumberSequenceRepository implements NumberSequenceRepository {
     required int year,
     required bool resetsYearly,
   }) async {
-    final next = (lastSequenceByType[type] ?? 0) + 1;
-    lastSequenceByType[type] = next;
+    final highestEver = _lastSequenceByTypeAndYear[(type, 0)] ?? 0;
+    final highestThisYear = _lastSequenceByTypeAndYear[(type, year)] ?? 0;
+    final next = (resetsYearly ? highestThisYear : highestEver) + 1;
+    _lastSequenceByTypeAndYear[(type, 0)] = math.max(highestEver, next);
+    _lastSequenceByTypeAndYear[(type, year)] = math.max(highestThisYear, next);
     return next;
   }
+
+  @override
+  Future<int> peekNextSequence(
+    DocumentType type, {
+    required int year,
+    required bool resetsYearly,
+  }) async =>
+      (_lastSequenceByTypeAndYear[(type, resetsYearly ? year : 0)] ?? 0) + 1;
 }
 
 class FakeDocumentRepository implements DocumentRepository {
@@ -125,7 +140,7 @@ class FakeDocumentRepository implements DocumentRepository {
     grandTotalMinor: const DocumentTotalsCalculator()
         .calculate(document)
         .grandTotalMinor,
-    currencyCode: document.pricingTerms.currencyFormat.currencyCode,
+    currencyFormat: document.pricingTerms.currencyFormat,
     isLocked: document.lockedAt != null,
     updatedAt: document.updatedAt,
   );
@@ -230,12 +245,24 @@ class FakeDocumentRepository implements DocumentRepository {
     return document;
   }
 
+  /// Like Drift: the current document, then each change; a missing document
+  /// is an error event and the stream keeps going.
   @override
-  Stream<BusinessDocument> watchDocument(String documentId) async* {
-    yield await getDocument(documentId);
-    await for (final _ in _changes.stream) {
-      yield await getDocument(documentId);
-    }
+  Stream<BusinessDocument> watchDocument(String documentId) {
+    return Stream<BusinessDocument>.multi((listener) {
+      void emitCurrent() {
+        final document = _documents[documentId];
+        if (document == null) {
+          listener.addErrorSync(DocumentNotFoundException(documentId));
+        } else {
+          listener.addSync(document);
+        }
+      }
+
+      final subscription = _changes.stream.listen((_) => emitCurrent());
+      emitCurrent();
+      listener.onCancel = subscription.cancel;
+    });
   }
 
   @override
@@ -251,6 +278,31 @@ class FakeDocumentRepository implements DocumentRepository {
           .toList();
 
   @override
+  Future<bool> documentNumberExists(
+    DocumentType type,
+    String documentNumber,
+  ) async => _documents.values.any(
+    (document) =>
+        document.documentType == type &&
+        document.documentNumber == documentNumber,
+  );
+
+  /// Like the unique index in Drift.
+  void _refuseDuplicateNumber(BusinessDocument document) {
+    final isDuplicate = _documents.values.any(
+      (stored) =>
+          stored.documentId != document.documentId &&
+          stored.documentType == document.documentType &&
+          stored.documentNumber == document.documentNumber,
+    );
+    if (isDuplicate) {
+      throw StorageWriteException(
+        'duplicate number ${document.documentNumber}',
+      );
+    }
+  }
+
+  @override
   Future<void> saveDocument(BusinessDocument document) async {
     if (failNextSave) {
       failNextSave = false;
@@ -260,6 +312,7 @@ class FakeDocumentRepository implements DocumentRepository {
     if (existing?.lockedAt != null) {
       throw DocumentLockedException(document.documentId);
     }
+    _refuseDuplicateNumber(document);
     saveCount++;
     seed(document);
   }
@@ -269,6 +322,7 @@ class FakeDocumentRepository implements DocumentRepository {
     required BusinessDocument lockedSource,
     required BusinessDocument createdDocument,
   }) async {
+    _refuseDuplicateNumber(createdDocument);
     _documents[lockedSource.documentId] = lockedSource;
     _documents[createdDocument.documentId] = createdDocument;
     _changes.add(null);
@@ -280,5 +334,39 @@ class FakeDocumentRepository implements DocumentRepository {
     if (existing.lockedAt != null) throw DocumentLockedException(documentId);
     _documents.remove(documentId);
     _changes.add(null);
+  }
+}
+
+/// Counts the open `watchDocument` and `watchDocumentChain` subscriptions, so
+/// tests can check that leaving a screen stops its watchers.
+class WatchCountingDocumentRepository extends FakeDocumentRepository {
+  int openDocumentWatches = 0;
+  int openChainWatches = 0;
+
+  @override
+  Stream<BusinessDocument> watchDocument(String documentId) => _counted(
+    super.watchDocument(documentId),
+    (change) => openDocumentWatches += change,
+  );
+
+  @override
+  Stream<DocumentChain> watchDocumentChain(String chainId) => _counted(
+    super.watchDocumentChain(chainId),
+    (change) => openChainWatches += change,
+  );
+
+  Stream<T> _counted<T>(Stream<T> source, void Function(int) count) {
+    return Stream<T>.multi((listener) {
+      count(1);
+      final subscription = source.listen(
+        listener.addSync,
+        onError: listener.addErrorSync,
+        onDone: listener.closeSync,
+      );
+      listener.onCancel = () {
+        count(-1);
+        return subscription.cancel();
+      };
+    });
   }
 }

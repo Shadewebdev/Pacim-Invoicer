@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../theme/app_color_tokens.dart';
 import 'status_bar_count_provider.dart';
+import 'status_bar_issues_provider.dart';
 import 'status_bar_message_provider.dart';
 
 class StatusBar extends ConsumerWidget {
@@ -12,6 +13,7 @@ class StatusBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = Theme.of(context).extension<AppColorTokens>()!;
     final message = ref.watch(statusBarMessageProvider);
+    final issues = ref.watch(statusBarIssuesProvider);
     final count = ref.watch(statusBarCountProvider);
     final textStyle = Theme.of(context).textTheme.bodySmall
         ?.copyWith(color: tokens.ink);
@@ -26,7 +28,7 @@ class StatusBar extends ConsumerWidget {
         children: [
           Expanded(
             child: Text(
-              message ?? '',
+              [?message, ?issues].join('  ·  '),
               style: textStyle,
               overflow: TextOverflow.ellipsis,
             ),

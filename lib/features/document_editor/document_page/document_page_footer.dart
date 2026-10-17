@@ -6,7 +6,8 @@ import 'document_page_styles.dart';
 import 'watched_document.dart';
 import 'inline_text_field.dart';
 
-/// The footer note and the page number, ruled off at the foot of the page.
+/// The footer note, ruled off at the foot of the page. Page numbers belong to
+/// the PDF, where pages exist, so the screen does not show them.
 class DocumentPageFooter extends ConsumerWidget {
   const DocumentPageFooter({required this.documentId, super.key});
 
@@ -16,9 +17,7 @@ class DocumentPageFooter extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final document = watchEditedDocument(ref, documentId);
     final layout = document.layoutOptions;
-    if (!layout.showFooterNote && !layout.showPageNumbers) {
-      return const SizedBox.shrink();
-    }
+    if (!layout.showFooterNote) return const SizedBox.shrink();
     final controller = ref.read(
       documentEditorControllerProvider(documentId).notifier,
     );
@@ -29,30 +28,14 @@ class DocumentPageFooter extends ConsumerWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.only(top: 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: layout.showFooterNote
-                  ? InlineTextField(
-                      key: const ValueKey('footerNote'),
-                      value: document.footerNote,
-                      placeholder: 'Footer note',
-                      readOnly: document.isLocked,
-                      maxLines: null,
-                      style: DocumentPageStyles.caption,
-                      onCommitted: controller.updateFooterNote,
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            if (layout.showPageNumbers) ...[
-              const SizedBox(width: 24),
-              Padding(
-                padding: const EdgeInsets.only(top: 3),
-                child: Text('Page 1 of 1', style: DocumentPageStyles.caption),
-              ),
-            ],
-          ],
+        child: InlineTextField(
+          key: const ValueKey('footerNote'),
+          value: document.footerNote,
+          placeholder: 'Footer note',
+          readOnly: document.isLocked,
+          maxLines: null,
+          style: DocumentPageStyles.caption,
+          onCommitted: controller.updateFooterNote,
         ),
       ),
     );

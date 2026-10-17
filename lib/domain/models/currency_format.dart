@@ -30,6 +30,12 @@ abstract class CurrencyFormat with _$CurrencyFormat {
   factory CurrencyFormat.fromJson(Map<String, dynamic> json) =>
       _$CurrencyFormatFromJson(json);
 
+  /// True when amounts can be read back unambiguously: there is a decimal
+  /// separator and it differs from the thousands separator, which may be
+  /// empty for no grouping.
+  bool get hasDistinctSeparators =>
+      decimalSeparator.isNotEmpty && thousandsSeparator != decimalSeparator;
+
   /// How many minor units make one major unit (100 for two decimal places).
   int get minorUnitsPerMajor {
     var result = 1;

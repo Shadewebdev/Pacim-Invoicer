@@ -135,6 +135,33 @@ void main() {
     expect(find.text('Reset to defaults'), findsNWidgets(3));
   });
 
+  testWidgets('matching separators are refused both ways', (tester) async {
+    final document = buildTestDocument();
+    await _pump(tester, document);
+    final thousandsField = find.widgetWithText(TextField, 'Thousands');
+    final decimalField = find.widgetWithText(TextField, 'Decimal');
+    await tester.ensureVisible(thousandsField);
+
+    await tester.enterText(thousandsField, '.');
+    await tester.pump();
+    expect(
+      find.text('Use a different separator from the decimal one'),
+      findsOneWidget,
+    );
+    await tester.enterText(decimalField, ',');
+    await tester.pump();
+    expect(
+      find.text('Use a different separator from the thousands one'),
+      findsOneWidget,
+    );
+
+    final format = _stateDocument(document.documentId)
+        .pricingTerms
+        .currencyFormat;
+    expect(format.thousandsSeparator, ',');
+    expect(format.decimalSeparator, '.');
+  });
+
   testWidgets('tax rate reads the document decimal separator and validates', (
     tester,
   ) async {

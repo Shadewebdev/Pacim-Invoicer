@@ -24,19 +24,38 @@ void main() {
   });
 
   test('reports pattern problems', () {
-    expect(formatter.findPatternProblems('QT-{yyyy}'), [
+    expect(formatter.findPatternProblems('QT-{yyyy}', resetsYearly: false), [
       'Add {seq:N} so each number is unique',
     ]);
-    expect(formatter.findPatternProblems('QT-{dd}-{seq:4}'), [
-      'Unknown token {dd}',
-    ]);
-    expect(formatter.findPatternProblems('QT-{yyyy}-{seq:4}'), isEmpty);
-    expect(formatter.findPatternProblems('{seq:2}{seq:3}'), [
-      'Use {seq:N} only once',
-    ]);
-    expect(formatter.findPatternProblems('{seq:0}'), [
+    expect(
+      formatter.findPatternProblems('QT-{dd}-{seq:4}', resetsYearly: false),
+      ['Unknown token {dd}'],
+    );
+    expect(
+      formatter.findPatternProblems('QT-{yyyy}-{seq:4}', resetsYearly: true),
+      isEmpty,
+    );
+    expect(
+      formatter.findPatternProblems('{seq:2}{seq:3}', resetsYearly: false),
+      ['Use {seq:N} only once'],
+    );
+    expect(formatter.findPatternProblems('{seq:0}', resetsYearly: false), [
       'Unknown token {seq:0}',
       'Add {seq:N} so each number is unique',
     ]);
+  });
+
+  test('a yearly reset needs a year token', () {
+    expect(formatter.findPatternProblems('QT-{seq:4}', resetsYearly: true), [
+      'Add {yyyy} or {yy} so yearly numbers stay unique',
+    ]);
+    expect(
+      formatter.findPatternProblems('QT-{seq:4}', resetsYearly: false),
+      isEmpty,
+    );
+    expect(
+      formatter.findPatternProblems('QT{yy}-{seq:4}', resetsYearly: true),
+      isEmpty,
+    );
   });
 }

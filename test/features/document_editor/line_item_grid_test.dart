@@ -282,6 +282,23 @@ void main() {
   });
 
   group('number cells', () {
+    testWidgets('number cells ask for a signed decimal keyboard', (
+      tester,
+    ) async {
+      await _pumpPage(tester, buildTestDocument());
+      TextInputType keyboardOf(LineItemColumn column) =>
+          tester.widget<EditableText>(_cell('line-1', column)).keyboardType;
+
+      const numberKeyboard = TextInputType.numberWithOptions(
+        decimal: true,
+        signed: true,
+      );
+      expect(keyboardOf(LineItemColumn.quantity), numberKeyboard);
+      expect(keyboardOf(LineItemColumn.unitPrice), numberKeyboard);
+      expect(keyboardOf(LineItemColumn.unit), TextInputType.text);
+      expect(keyboardOf(LineItemColumn.description), TextInputType.multiline);
+    });
+
     testWidgets('typing abc in price keeps old value and shows Enter a '
         'number', (tester) async {
       await _pumpPage(tester, buildTestDocument());

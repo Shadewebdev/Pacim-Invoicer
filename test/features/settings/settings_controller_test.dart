@@ -103,7 +103,12 @@ void main() {
       settingsControllerProvider.notifier,
     );
 
-    expect(controller.findNumberingPatternProblems('QT-{yyyy}'), isNotEmpty);
+    expect(
+      controller.findNumberingRuleProblems(
+        const DocumentNumberingRule(pattern: 'QT-{yyyy}'),
+      ),
+      isNotEmpty,
+    );
     controller.updateNumberingRule(
       DocumentType.quotation,
       const DocumentNumberingRule(pattern: 'QT-{yyyy}'),
@@ -142,6 +147,27 @@ void main() {
         .numberingRuleByType[DocumentType.salesOrder]!;
     expect(rule.pattern, 'S{yy}{mm}-{seq:3}');
     expect(rule.resetsYearly, isTrue);
+    setup.container.dispose();
+  });
+
+  testWidgets('a yearly reset without a year token is not saved', (
+    tester,
+  ) async {
+    final setup = await _createLoadedContainer(tester);
+
+    setup.container
+        .read(settingsControllerProvider.notifier)
+        .updateNumberingRule(
+          DocumentType.quotation,
+          const DocumentNumberingRule(
+            pattern: 'QT-{seq:4}',
+            resetsYearly: true,
+          ),
+        );
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump();
+
+    expect(setup.settingsRepository.saveCount, 0);
     setup.container.dispose();
   });
 
@@ -189,6 +215,9 @@ void main() {
   );
 
   testWidgets('a failed save reports to the status bar', (tester) async {
+    final logged = <String?>[];
+    final originalDebugPrint = debugPrint;
+    debugPrint = (message, {wrapWidth}) => logged.add(message);
     final setup = await _createLoadedContainer(tester);
     setup.settingsRepository.failNextSave = true;
 
@@ -202,6 +231,8 @@ void main() {
       setup.container.read(statusBarMessageProvider),
       "Couldn't save settings",
     );
+    debugPrint = originalDebugPrint;
+    expect(logged.join(), contains('fake save failure'));
     setup.container.dispose();
   });
 

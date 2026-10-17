@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/repository_providers.dart';
 import '../../../domain/models/business_document.dart';
 import '../../../domain/models/document_type.dart';
+import '../../../domain/models/validation_issue.dart';
 import '../../../domain/services/delivery_progress_calculator.dart';
 import '../../../shared/document_page_metrics.dart';
 import '../../../shared/line_item_cell_text.dart';
@@ -17,6 +18,12 @@ import 'grid_cell_field.dart';
 import 'grid_focus_controller.dart';
 import 'grid_shortcuts.dart';
 import 'line_item_row.dart';
+
+const String _lineIdSeparator = ',';
+
+final String _zeroQuantityMessage = const ValidationIssue(
+  kind: ValidationIssueKind.zeroQuantity,
+).message;
 
 /// The focus node and commit handle of one cell, owned by the grid.
 class _CellSlot {
@@ -344,12 +351,29 @@ class _LineItemGridState extends ConsumerState<LineItemGrid> {
     );
   }
 
+  /// The lines whose zero quantity is a validation issue.
+  Set<String> _zeroQuantityLineIds() {
+    final joinedIds = ref.watch(
+      documentEditorControllerProvider(widget.documentId).select(
+        (state) => [
+          for (final issue in state.value?.validationIssues ?? const [])
+            if (issue.kind == ValidationIssueKind.zeroQuantity)
+              ?issue.lineItemId,
+        ].join(_lineIdSeparator),
+      ),
+    );
+    return joinedIds.isEmpty
+        ? const {}
+        : joinedIds.split(_lineIdSeparator).toSet();
+  }
+
   Widget _buildRow(
     BusinessDocument document,
     int index, {
     required List<LineItemColumn> columns,
     required int amountMinor,
     required Map<String, int>? remainingBySalesOrderLine,
+    required Set<String> zeroQuantityLineIds,
   }) {
     final line = document.lineItems[index];
     final sourceId = line.sourceLineItemId;
@@ -369,6 +393,9 @@ class _LineItemGridState extends ConsumerState<LineItemGrid> {
       remainingToDeliver: remaining != null && line.quantityScaled > remaining
           ? math.max(0, remaining)
           : null,
+      quantityIssue: zeroQuantityLineIds.contains(line.lineItemId)
+          ? _zeroQuantityMessage
+          : null,
       focusNodeFor: (column) => _slotFor(addressOf(column)).focusNode,
       commitHandleFor: (column) => _slotFor(addressOf(column)).commitHandle,
       onCellCommitted: (column, text) =>
@@ -385,6 +412,7 @@ class _LineItemGridState extends ConsumerState<LineItemGrid> {
     final document = watchEditedDocument(ref, widget.documentId);
     final totalsCalculator = ref.watch(documentTotalsCalculatorProvider);
     final remainingBySalesOrderLine = _remainingToDeliver(document);
+    final zeroQuantityLineIds = _zeroQuantityLineIds();
     final columns = DocumentPageMetrics.visibleColumns(
       document.layoutOptions,
       document.documentType,
@@ -413,6 +441,7 @@ class _LineItemGridState extends ConsumerState<LineItemGrid> {
             document.lineItems[index],
           ),
           remainingBySalesOrderLine: remainingBySalesOrderLine,
+          zeroQuantityLineIds: zeroQuantityLineIds,
         ),
     ];
 

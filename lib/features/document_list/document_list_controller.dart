@@ -49,8 +49,8 @@ final documentListControllerProvider =
       DocumentType
     >(DocumentListController.new);
 
-final documentSummariesProvider =
-    StreamProvider.family<List<DocumentSummary>, DocumentType>((ref, type) {
+final documentSummariesProvider = StreamProvider.autoDispose
+    .family<List<DocumentSummary>, DocumentType>((ref, type) {
       final query = ref.watch(documentListControllerProvider(type));
       return ref
           .watch(documentRepositoryProvider)
@@ -58,17 +58,15 @@ final documentSummariesProvider =
     });
 
 /// How many documents match the listing's filters, whatever the page size.
-final documentCountProvider = StreamProvider.family<int, DocumentType>((
-  ref,
-  type,
-) {
-  final query = ref.watch(documentListControllerProvider(type));
-  return ref.watch(documentRepositoryProvider).watchDocumentCount(query);
-});
+final documentCountProvider = StreamProvider.autoDispose
+    .family<int, DocumentType>((ref, type) {
+      final query = ref.watch(documentListControllerProvider(type));
+      return ref.watch(documentRepositoryProvider).watchDocumentCount(query);
+    });
 
 /// The documents linked to a listed row, shown as chips in the chain column.
-final listedDocumentChainProvider =
-    StreamProvider.family<DocumentChain, String>(
+final listedDocumentChainProvider = StreamProvider.autoDispose
+    .family<DocumentChain, String>(
       (ref, chainId) =>
           ref.watch(documentRepositoryProvider).watchDocumentChain(chainId),
     );

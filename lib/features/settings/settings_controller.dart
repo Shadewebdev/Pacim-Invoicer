@@ -16,6 +16,7 @@ import '../../domain/models/document_type.dart';
 import '../../domain/models/pricing_terms.dart';
 import '../../domain/models/signature_block.dart';
 import '../../domain/services/document_number_formatter.dart';
+import '../../shared/error_reporting.dart';
 
 const Duration _saveDebounce = Duration(milliseconds: 600);
 const DocumentNumberFormatter _numberFormatter = DocumentNumberFormatter();
@@ -37,9 +38,12 @@ class SettingsController extends AsyncNotifier<DocumentSettings> {
     return settings;
   }
 
-  /// Reasons [pattern] cannot be saved as a numbering rule; empty when valid.
-  List<String> findNumberingPatternProblems(String pattern) =>
-      _numberFormatter.findPatternProblems(pattern);
+  /// Reasons [rule] cannot be saved; empty when valid.
+  List<String> findNumberingRuleProblems(DocumentNumberingRule rule) =>
+      _numberFormatter.findPatternProblems(
+        rule.pattern,
+        resetsYearly: rule.resetsYearly,
+      );
 
   void updateCompanyDetails(CompanyDetails companyDetails) => _applyChange(
     (current) => current.copyWith(companyDetails: companyDetails),
@@ -81,9 +85,9 @@ class SettingsController extends AsyncNotifier<DocumentSettings> {
         ),
       );
 
-  /// Ignores a rule whose pattern has problems; everything else still saves.
+  /// Ignores a rule that has problems; everything else still saves.
   void updateNumberingRule(DocumentType type, DocumentNumberingRule rule) {
-    if (findNumberingPatternProblems(rule.pattern).isNotEmpty) return;
+    if (findNumberingRuleProblems(rule).isNotEmpty) return;
     _applyChange(
       (current) => current.copyWith(
         numberingRuleByType: {...current.numberingRuleByType, type: rule},
@@ -160,7 +164,8 @@ class SettingsController extends AsyncNotifier<DocumentSettings> {
     _lastSave = _lastSave.then((_) async {
       try {
         await _settingsRepository.saveSettings(settings);
-      } on Object {
+      } on Object catch (error, stack) {
+        reportAndDescribeError(error, stack);
         if (ref.mounted) {
           ref
               .read(statusBarMessageProvider.notifier)

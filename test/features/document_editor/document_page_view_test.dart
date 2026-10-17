@@ -71,7 +71,16 @@ void main() {
     expect(find.text('QT-2026-0001'), findsOneWidget);
     expect(find.text('Acme Trading'), findsOneWidget);
     expect(find.text('Quotation'), findsOneWidget);
-    expect(find.text('Page 1 of 1'), findsOneWidget);
+  });
+
+  testWidgets('the on-screen footer keeps the note but no page numbers', (
+    tester,
+  ) async {
+    final document = buildTestDocument();
+    expect(document.layoutOptions.showPageNumbers, isTrue);
+    await _pumpPage(tester, document);
+    expect(find.text('Computer generated.'), findsOneWidget);
+    expect(find.textContaining('Page '), findsNothing);
   });
 
   testWidgets('committing customer name calls updateCustomerDetails', (
@@ -197,7 +206,9 @@ void main() {
   testWidgets('footer is pinned to the bottom of a short page', (tester) async {
     final document = buildTestDocument(lineItems: [buildTestLine()]);
     await _pumpPage(tester, document);
-    final footer = tester.getBottomLeft(find.text('Page 1 of 1')).dy;
+    final footer = tester
+        .getBottomLeft(find.byKey(const ValueKey('footerNote')))
+        .dy;
     final page = tester.getRect(find.byType(DocumentPageView));
     expect(page.height, closeTo(DocumentPageView.pageHeight, 0.5));
     // The footer sits within the bottom margin of the A4 page.

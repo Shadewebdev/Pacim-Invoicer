@@ -3,10 +3,15 @@ import 'package:pacim_invoicer/domain/models/document_list_query.dart';
 import 'package:pacim_invoicer/domain/models/document_settings.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
 
+import '../data/contract/number_sequence_repository_contract.dart';
 import 'document_builders.dart';
 import 'fake_repositories.dart';
 
 void main() {
+  runNumberSequenceRepositoryContract(
+    () async => FakeNumberSequenceRepository(),
+  );
+
   testWidgets('a write immediately after listening is not lost', (
     tester,
   ) async {

@@ -62,6 +62,57 @@ void runNumberSequenceRepositoryContract(
       },
     );
 
+    test(
+      'turning yearly reset on mid-year continues above numbers of this year',
+      () async {
+        expect(await allocate(DocumentType.quotation, year: 2025), 1);
+        expect(await allocate(DocumentType.quotation), 2);
+        expect(await allocate(DocumentType.quotation), 3);
+
+        expect(await allocate(DocumentType.quotation, resetsYearly: true), 4);
+        expect(
+          await allocate(
+            DocumentType.quotation,
+            year: 2027,
+            resetsYearly: true,
+          ),
+          1,
+        );
+      },
+    );
+
+    test('turning yearly reset off continues above every number', () async {
+      expect(await allocate(DocumentType.quotation, year: 2025), 1);
+      for (var expected = 1; expected <= 5; expected++) {
+        expect(
+          await allocate(DocumentType.quotation, resetsYearly: true),
+          expected,
+        );
+      }
+
+      expect(await allocate(DocumentType.quotation), 6);
+      // And back on in the same year: still above everything issued in it.
+      expect(await allocate(DocumentType.quotation, resetsYearly: true), 7);
+    });
+
+    test('peekNextSequence tells the next sequence without using it', () async {
+      Future<int> peek({int year = 2026, bool resetsYearly = false}) =>
+          repository.peekNextSequence(
+            DocumentType.quotation,
+            year: year,
+            resetsYearly: resetsYearly,
+          );
+
+      expect(await peek(), 1);
+      expect(await allocate(DocumentType.quotation), 1);
+      expect(await allocate(DocumentType.quotation), 2);
+      expect(await peek(), 3);
+      expect(await peek(), 3);
+      expect(await peek(resetsYearly: true), 3);
+      expect(await peek(year: 2027, resetsYearly: true), 1);
+      expect(await allocate(DocumentType.quotation), 3);
+    });
+
     test('20 concurrent allocations return 1..20 with no duplicates', () async {
       final results = await Future.wait([
         for (var i = 0; i < 20; i++) allocate(DocumentType.deliveryOrder),

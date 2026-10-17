@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_color_tokens.dart';
 import '../../app/theme/app_typography.dart';
-import '../../domain/models/currency_format.dart';
 import '../../domain/models/document_list_query.dart';
 import '../../domain/models/document_summary.dart';
 import '../../domain/models/document_type.dart';
@@ -37,7 +36,6 @@ class DocumentSummaryTable extends StatefulWidget {
   const DocumentSummaryTable({
     required this.summaries,
     required this.documentType,
-    required this.currencyFormat,
     required this.sortField,
     required this.sortDescending,
     required this.canLoadMore,
@@ -54,7 +52,6 @@ class DocumentSummaryTable extends StatefulWidget {
 
   final List<DocumentSummary> summaries;
   final DocumentType documentType;
-  final CurrencyFormat currencyFormat;
   final DocumentSortField sortField;
   final bool sortDescending;
   final bool canLoadMore;
@@ -127,7 +124,6 @@ class _DocumentSummaryTableState extends State<DocumentSummaryTable> {
                     key: ValueKey(summary.documentId),
                     summary: summary,
                     layout: layout,
-                    currencyFormat: widget.currencyFormat,
                     onOpen: widget.onOpen,
                     onUpgrade: widget.onUpgrade,
                     onDuplicate: widget.onDuplicate,
@@ -267,7 +263,6 @@ class _SummaryRow extends StatefulWidget {
   const _SummaryRow({
     required this.summary,
     required this.layout,
-    required this.currencyFormat,
     required this.onOpen,
     required this.onUpgrade,
     required this.onDuplicate,
@@ -279,7 +274,6 @@ class _SummaryRow extends StatefulWidget {
 
   final DocumentSummary summary;
   final _ColumnLayout layout;
-  final CurrencyFormat currencyFormat;
   final ValueChanged<DocumentSummary> onOpen;
   final ValueChanged<DocumentSummary> onUpgrade;
   final ValueChanged<DocumentSummary> onDuplicate;
@@ -325,18 +319,10 @@ class _SummaryRowState extends State<_SummaryRow> {
     _menuController.open(position: position);
   }
 
-  String _formatTotal() {
-    final summary = widget.summary;
-    if (summary.currencyCode == widget.currencyFormat.currencyCode) {
-      return formatMoney(summary.grandTotalMinor, widget.currencyFormat);
-    }
-    final amount = formatMoney(
-      summary.grandTotalMinor,
-      widget.currencyFormat,
-      includeSymbol: false,
-    );
-    return '${summary.currencyCode} $amount';
-  }
+  String _formatTotal() => formatMoney(
+    widget.summary.grandTotalMinor,
+    widget.summary.currencyFormat,
+  );
 
   @override
   Widget build(BuildContext context) {

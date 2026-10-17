@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pacim_invoicer/data/repositories/document_repository.dart';
 import 'package:pacim_invoicer/domain/exceptions/document_exceptions.dart';
 import 'package:pacim_invoicer/domain/models/business_document.dart';
+import 'package:pacim_invoicer/domain/models/currency_format.dart';
 import 'package:pacim_invoicer/domain/models/document_list_query.dart';
 import 'package:pacim_invoicer/domain/models/document_summary.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
@@ -254,6 +255,110 @@ void runDocumentRepositoryContract(
       expect(summary.isLocked, isFalse);
     });
 
+    test('documentNumberExists matches the number within its type', () async {
+      await repository.saveDocument(documentWith(id: 'a'));
+
+      expect(
+        await repository.documentNumberExists(
+          DocumentType.quotation,
+          'QT-2026-0001',
+        ),
+        isTrue,
+      );
+      expect(
+        await repository.documentNumberExists(
+          DocumentType.quotation,
+          'QT-2026-0002',
+        ),
+        isFalse,
+      );
+      expect(
+        await repository.documentNumberExists(
+          DocumentType.salesOrder,
+          'QT-2026-0001',
+        ),
+        isFalse,
+      );
+    });
+
+    test(
+      'a second document with the same type and number is refused',
+      () async {
+        await repository.saveDocument(documentWith(id: 'a'));
+        await repository.saveDocument(
+          documentWith(id: 'a', customer: 'Resaved under its own number'),
+        );
+        await repository.saveDocument(
+          documentWith(id: 'so', type: DocumentType.salesOrder),
+        );
+
+        await expectLater(
+          repository.saveDocument(documentWith(id: 'b')),
+          throwsA(isA<StorageWriteException>()),
+        );
+        await expectLater(
+          repository.getDocument('b'),
+          throwsA(isA<DocumentNotFoundException>()),
+        );
+      },
+    );
+
+    test('an upgrade creating a duplicate number changes nothing', () async {
+      await repository.saveDocument(documentWith(id: 'qt', chainId: 'c1'));
+      await repository.saveDocument(
+        documentWith(
+          id: 'so-old',
+          type: DocumentType.salesOrder,
+          number: 'SO-2026-0001',
+          chainId: 'c2',
+        ),
+      );
+      final source = await repository.getDocument('qt');
+      final created = documentWith(
+        id: 'so-new',
+        type: DocumentType.salesOrder,
+        number: 'SO-2026-0001',
+        chainId: 'c1',
+      ).copyWith(sourceDocumentId: 'qt');
+
+      await expectLater(
+        repository.saveUpgrade(
+          lockedSource: source.copyWith(lockedAt: DateTime.utc(2026, 10, 18)),
+          createdDocument: created,
+        ),
+        throwsA(isA<StorageWriteException>()),
+      );
+      expect((await repository.getDocument('qt')).lockedAt, isNull);
+    });
+
+    test('summary carries the currency format of the document', () async {
+      const yen = CurrencyFormat(
+        currencyCode: 'JPY',
+        symbol: '¥',
+        decimalPlaces: 0,
+        symbolPosition: CurrencySymbolPosition.after,
+        thousandsSeparator: '.',
+        decimalSeparator: ',',
+      );
+      final base = documentWith(id: 'a');
+      await repository.saveDocument(
+        base.copyWith(
+          pricingTerms: base.pricingTerms.copyWith(currencyFormat: yen),
+        ),
+      );
+      final summary =
+          (await repository
+                  .watchDocumentSummaries(
+                    const DocumentListQuery(
+                      documentType: DocumentType.quotation,
+                    ),
+                  )
+                  .first)
+              .single;
+      expect(summary.currencyFormat, yen);
+      expect(summary.currencyCode, 'JPY');
+    });
+
     test(
       'watchDocumentChain groups QT, SO and DOs ordered by number',
       () async {
@@ -280,7 +385,7 @@ void runDocumentRepositoryContract(
           ),
         );
         await repository.saveDocument(
-          documentWith(id: 'other', chainId: 'chain-2'),
+          documentWith(id: 'other', number: 'QT-2026-0002', chainId: 'chain-2'),
         );
 
         final chain = await repository.watchDocumentChain('chain-1').first;
