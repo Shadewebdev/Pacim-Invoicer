@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../support/test_provider_overrides.dart';
 
 import 'package:pacim_invoicer/app/shell/status_bar_count_provider.dart';
+import 'package:pacim_invoicer/app/shell/status_bar_message_provider.dart';
+import 'package:pacim_invoicer/features/pdf_export/pdf_export_service.dart';
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
 import 'package:pacim_invoicer/data/repository_providers.dart';
 import 'package:pacim_invoicer/domain/models/business_document.dart';
@@ -17,6 +19,7 @@ import 'package:pacim_invoicer/features/document_list/document_list_controller.d
 import 'package:pacim_invoicer/features/document_list/document_list_page.dart';
 
 import '../../support/document_builders.dart';
+import '../../support/fake_pdf_output_target.dart';
 import '../../support/fake_repositories.dart';
 
 BusinessDocument _document({
@@ -44,6 +47,7 @@ Future<FakeDocumentRepository> pumpListPage(
   DocumentType type = DocumentType.quotation,
   List<BusinessDocument> seeded = const [],
   FakeNumberSequenceRepository? sequences,
+  FakePdfOutputTarget? pdfTarget,
 }) async {
   tester.view.physicalSize = const Size(1200, 800);
   tester.view.devicePixelRatio = 1;
@@ -59,6 +63,11 @@ Future<FakeDocumentRepository> pumpListPage(
           numberSequences: sequences,
         ),
         clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
+        pdfOutputTargetProvider.overrideWithValue(
+          pdfTarget ?? FakePdfOutputTarget(),
+        ),
+        sharesPdfInsteadOfSavingProvider.overrideWithValue(false),
+        pdfFontSetProvider.overrideWith((ref) async => fakePdfFontSet()),
       ],
       child: MaterialApp(
         theme: buildAppTheme(
@@ -138,6 +147,34 @@ void main() {
     await openContextMenu(tester, 'Draft Co');
     expect(find.text('Delete'), findsOneWidget);
     expect(find.text('Upgrade to sales order'), findsOneWidget);
+  });
+
+  testWidgets('Export PDF in the row menu exports that document', (
+    tester,
+  ) async {
+    final pdfTarget = FakePdfOutputTarget();
+    await pumpListPage(
+      tester,
+      pdfTarget: pdfTarget,
+      seeded: [
+        _document(id: 'q1', number: 'QT-2026-0003', customer: 'Export Co'),
+      ],
+    );
+    await openContextMenu(tester, 'Export Co');
+    await tester.tap(find.text('Export PDF'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 1500)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(pdfTarget.savedNames, ['QT-2026-0003 Export Co.pdf']);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(DocumentListPage)),
+    );
+    expect(
+      container.read(statusBarMessageProvider),
+      'Exported QT-2026-0003 Export Co.pdf',
+    );
   });
 
   testWidgets('delete asks for confirmation with the document number', (

@@ -16,14 +16,19 @@ import 'package:pacim_invoicer/domain/models/document_type.dart';
 import 'package:pacim_invoicer/features/document_editor/document_editor_controller.dart';
 import 'package:pacim_invoicer/features/document_editor/document_editor_page.dart';
 import 'package:pacim_invoicer/features/document_editor/document_editor_state.dart';
+import 'package:pacim_invoicer/features/pdf_export/pdf_export_service.dart';
+import 'package:pacim_invoicer/app/shell/status_bar_message_provider.dart';
+import 'package:pacim_invoicer/domain/models/customer_details.dart';
 
 import '../../support/document_builders.dart';
+import '../../support/fake_pdf_output_target.dart';
 import '../../support/fake_repositories.dart';
 import '../../support/sequential_id_generator.dart';
 
 late ProviderContainer _container;
 late FakeDocumentRepository _documents;
 late GoRouter _router;
+late FakePdfOutputTarget _pdfTarget;
 
 String get _location => _router.routerDelegate.currentConfiguration.uri.path;
 
@@ -39,10 +44,14 @@ Future<void> _pump(
   addTearDown(tester.view.resetDevicePixelRatio);
   _documents = repository ?? FakeDocumentRepository();
   seeded.forEach(_documents.seed);
+  _pdfTarget = FakePdfOutputTarget();
   _container = ProviderContainer(
     retry: (_, _) => null,
     overrides: [
       ...fakeStorageOverrides(documents: _documents),
+      pdfOutputTargetProvider.overrideWithValue(_pdfTarget),
+      sharesPdfInsteadOfSavingProvider.overrideWithValue(false),
+      pdfFontSetProvider.overrideWith((ref) async => fakePdfFontSet()),
       idGeneratorProvider.overrideWithValue(SequentialIdGenerator()),
       clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
     ],
@@ -78,6 +87,15 @@ Future<void> _pump(
         ),
       ),
     ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// Lets a PDF export finish. Building the PDF takes real time, which
+/// pumpAndSettle does not wait for.
+Future<void> _settleExport(WidgetTester tester) async {
+  await tester.runAsync(
+    () => Future<void>.delayed(const Duration(milliseconds: 1500)),
   );
   await tester.pumpAndSettle();
 }
@@ -141,6 +159,16 @@ class _EditsDuringSaveRepository extends FakeDocumentRepository {
       _controllerFor(document.documentId)
           .updateNotes('edit during save $_saves');
     }
+  }
+}
+
+class _GatedSaveRepository extends FakeDocumentRepository {
+  final gate = Completer<void>();
+
+  @override
+  Future<void> saveDocument(BusinessDocument document) async {
+    await gate.future;
+    await super.saveDocument(document);
   }
 }
 
@@ -416,6 +444,122 @@ void main() {
     expect(_location, '/quotations');
   });
 
+  testWidgets('a save already in flight cannot bring a deleted draft back', (
+    tester,
+  ) async {
+    final repository = _GatedSaveRepository();
+    await _pump(tester, [buildTestDocument()], repository: repository);
+    _controllerFor('doc-1').updateNotes('pending edit');
+    unawaited(_controllerFor('doc-1').saveNow());
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pump();
+    repository.gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(repository.storedDocuments, isEmpty);
+    expect(_location, '/quotations');
+  });
+
+  group('PDF export', () {
+    BusinessDocument noCustomer() =>
+        buildTestDocument().copyWith(customerDetails: const CustomerDetails());
+
+    String? statusMessage() => _container.read(statusBarMessageProvider);
+
+    testWidgets('export with issues shows dialog listing messages', (
+      tester,
+    ) async {
+      await _pump(tester, [noCustomer()]);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Export PDF'));
+      await _settleExport(tester);
+
+      expect(find.text('Export with issues?'), findsOneWidget);
+      expect(find.text('Customer name is empty'), findsOneWidget);
+      expect(_pdfTarget.savedNames, isEmpty);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Export anyway'));
+      await _settleExport(tester);
+
+      expect(_pdfTarget.savedNames, ['QT-2026-0001.pdf']);
+      expect(statusMessage(), 'Exported QT-2026-0001.pdf');
+    });
+
+    testWidgets('cancelling the issues dialog exports nothing', (tester) async {
+      await _pump(tester, [noCustomer()]);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Export PDF'));
+      await _settleExport(tester);
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(_pdfTarget.outputs, isEmpty);
+      expect(statusMessage(), isNull);
+    });
+
+    testWidgets('a clean document exports without asking', (tester) async {
+      await _pump(tester, [buildTestDocument()]);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Export PDF'));
+      await _settleExport(tester);
+
+      expect(find.text('Export with issues?'), findsNothing);
+      expect(_pdfTarget.savedNames, ['QT-2026-0001 Acme Trading.pdf']);
+      expect(statusMessage(), 'Exported QT-2026-0001 Acme Trading.pdf');
+    });
+
+    testWidgets('Ctrl+P exports and saves just-typed edits first', (
+      tester,
+    ) async {
+      await _pump(tester, [buildTestDocument()]);
+      _controllerFor('doc-1').updateNotes('typed just now');
+
+      await _pressChord(tester, LogicalKeyboardKey.keyP);
+      await _settleExport(tester);
+
+      expect(_pdfTarget.savedNames, hasLength(1));
+      expect(_documents.storedDocuments.single.notes, 'typed just now');
+    });
+
+    testWidgets('cancelling the save dialog shows nothing', (tester) async {
+      await _pump(tester, [buildTestDocument()]);
+      _pdfTarget.saveSucceeds = false;
+
+      await tester.tap(find.widgetWithText(TextButton, 'Export PDF'));
+      await _settleExport(tester);
+
+      expect(statusMessage(), isNull);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('a failed export says so', (tester) async {
+      await _pump(tester, [buildTestDocument()]);
+      _pdfTarget.failSave = true;
+
+      await tester.tap(find.widgetWithText(TextButton, 'Export PDF'));
+      await _settleExport(tester);
+
+      expect(find.text("Couldn't export QT-2026-0001"), findsOneWidget);
+      expect(statusMessage(), isNull);
+    });
+
+    testWidgets('Print sends the PDF to the printer and shows no message', (
+      tester,
+    ) async {
+      await _pump(tester, [buildTestDocument()]);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Print'));
+      await _settleExport(tester);
+
+      expect(_pdfTarget.printedNames, ['QT-2026-0001 Acme Trading.pdf']);
+      expect(statusMessage(), isNull);
+    });
+  });
+
   testWidgets('Ctrl+N creates a document of the same type and opens it', (
     tester,
   ) async {
@@ -495,6 +639,7 @@ void main() {
   testWidgets('command tooltips show their shortcuts', (tester) async {
     await _pump(tester, [buildTestDocument()]);
     expect(find.byTooltip('Save (Ctrl+S)'), findsOneWidget);
+    expect(find.byTooltip('Export PDF (Ctrl+P)'), findsOneWidget);
     expect(
       find.byTooltip('Upgrade to sales order (Ctrl+Shift+U)'),
       findsOneWidget,

@@ -125,6 +125,8 @@ class _DocumentEditorPageState extends ConsumerState<DocumentEditorPage> {
               _upgradeFromShortcut(value.document),
           const SingleActivator(LogicalKeyboardKey.keyN, control: true): () =>
               unawaited(_actions.createSameType()),
+          const SingleActivator(LogicalKeyboardKey.keyP, control: true): () =>
+              unawaited(_actions.exportPdf()),
         },
         // Takes focus when nothing else has it, so shortcuts always work.
         child: Focus(
@@ -306,13 +308,15 @@ class _CommandBar extends ConsumerWidget {
                           tooltip: 'Delete this draft',
                           onPressed: () => unawaited(actions.delete()),
                         ),
-                      const _CommandButton(
+                      _CommandButton(
                         label: 'Export PDF',
-                        tooltip: 'Export PDF is not available yet',
+                        tooltip: 'Export PDF (Ctrl+P)',
+                        onPressed: () => unawaited(actions.exportPdf()),
                       ),
-                      const _CommandButton(
+                      _CommandButton(
                         label: 'Print',
-                        tooltip: 'Print is not available yet',
+                        tooltip: 'Print',
+                        onPressed: () => unawaited(actions.printDocument()),
                       ),
                     ],
                   ),

@@ -212,6 +212,10 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
     await _enqueueSave();
   }
 
+  /// Completes once every save started so far has finished, whether or not it
+  /// succeeded.
+  Future<void> whenIdle() => _lastSave.catchError((Object _) {});
+
   /// Saves again after a failed save.
   Future<void> retrySave() => saveNow();
 

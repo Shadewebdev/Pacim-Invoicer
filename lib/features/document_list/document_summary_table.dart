@@ -36,6 +36,7 @@ class DocumentSummaryTable extends StatefulWidget {
     required this.onOpen,
     required this.onUpgrade,
     required this.onDuplicate,
+    required this.onExportPdf,
     required this.onDelete,
     required this.findUpgradeBlocker,
     super.key,
@@ -52,6 +53,7 @@ class DocumentSummaryTable extends StatefulWidget {
   final ValueChanged<DocumentSummary> onOpen;
   final ValueChanged<DocumentSummary> onUpgrade;
   final ValueChanged<DocumentSummary> onDuplicate;
+  final ValueChanged<DocumentSummary> onExportPdf;
   final ValueChanged<DocumentSummary> onDelete;
 
   /// The reason the row cannot be upgraded, or null when it can.
@@ -118,6 +120,7 @@ class _DocumentSummaryTableState extends State<DocumentSummaryTable> {
                     onOpen: widget.onOpen,
                     onUpgrade: widget.onUpgrade,
                     onDuplicate: widget.onDuplicate,
+                    onExportPdf: widget.onExportPdf,
                     onDelete: widget.onDelete,
                     findUpgradeBlocker: widget.findUpgradeBlocker,
                   );
@@ -243,6 +246,7 @@ class _SummaryRow extends StatefulWidget {
     required this.onOpen,
     required this.onUpgrade,
     required this.onDuplicate,
+    required this.onExportPdf,
     required this.onDelete,
     required this.findUpgradeBlocker,
     super.key,
@@ -254,6 +258,7 @@ class _SummaryRow extends StatefulWidget {
   final ValueChanged<DocumentSummary> onOpen;
   final ValueChanged<DocumentSummary> onUpgrade;
   final ValueChanged<DocumentSummary> onDuplicate;
+  final ValueChanged<DocumentSummary> onExportPdf;
   final ValueChanged<DocumentSummary> onDelete;
   final Future<String?> Function(DocumentSummary summary) findUpgradeBlocker;
 
@@ -340,10 +345,9 @@ class _SummaryRowState extends State<_SummaryRow> {
           onPressed: () => widget.onDuplicate(summary),
           child: const Text('Duplicate as new draft'),
         ),
-        const MenuItemButton(
-          // Enabled by the PDF export task.
-          onPressed: null,
-          child: Text('Export PDF'),
+        MenuItemButton(
+          onPressed: () => widget.onExportPdf(summary),
+          child: const Text('Export PDF'),
         ),
         if (!summary.isLocked)
           MenuItemButton(

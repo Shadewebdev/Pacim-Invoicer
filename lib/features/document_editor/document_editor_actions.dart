@@ -5,6 +5,7 @@ import '../../app/shell/navigation_leave_guard.dart';
 import '../../domain/exceptions/document_exceptions.dart';
 import '../../domain/models/business_document.dart';
 import '../../data/repository_providers.dart';
+import '../pdf_export/pdf_export_flow.dart';
 import 'document_commands.dart';
 import 'document_editor_controller.dart';
 import 'document_editor_state.dart';
@@ -109,6 +110,8 @@ class DocumentEditorActions {
     if (confirmed != true || !context.mounted) return;
     // Holding autosave stops pending edits being written back over the delete.
     _controller.holdAutosave();
+    // A save already running would otherwise write the draft back afterwards.
+    await _controller.whenIdle();
     var isDeleted = false;
     await _runCommand(
       "Couldn't delete ${document.documentNumber}. Try again.",
@@ -126,6 +129,29 @@ class DocumentEditorActions {
     );
     // A failed delete keeps the edits, so saving carries on as before.
     if (!isDeleted) _controller.releaseAutosave();
+  });
+
+  /// Saves, then exports the document being edited as a PDF.
+  Future<void> exportPdf() => _runExclusively(() async {
+    if (!await _flushPendingEdits(refusal: 'exporting')) return;
+    final state = ref
+        .read(documentEditorControllerProvider(currentDocumentId()))
+        .value;
+    if (state == null || !context.mounted) return;
+    await exportDocumentAsPdf(
+      context: context,
+      ref: ref,
+      document: state.document,
+      issues: state.validationIssues,
+    );
+  });
+
+  /// Saves, then prints the document being edited.
+  Future<void> printDocument() => _runExclusively(() async {
+    if (!await _flushPendingEdits(refusal: 'printing')) return;
+    final document = _document;
+    if (document == null || !context.mounted) return;
+    await printDocumentAsPdf(context: context, ref: ref, document: document);
   });
 
   /// Opens another document of the chain.

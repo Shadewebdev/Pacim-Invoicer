@@ -9,11 +9,15 @@ import '../../app/shell/status_bar_count_provider.dart';
 import '../../app/theme/app_color_tokens.dart';
 import '../../app/theme/app_typography.dart';
 import '../../domain/exceptions/document_exceptions.dart';
+import '../../data/repository_providers.dart';
+import '../../domain/models/business_document.dart';
 import '../../domain/models/currency_format.dart';
 import '../../domain/models/document_summary.dart';
 import '../../domain/models/document_type.dart';
+import '../../domain/models/validation_issue.dart';
 import '../../shared/formatting/date_formatter.dart';
 import '../document_editor/document_commands.dart';
+import '../pdf_export/pdf_export_flow.dart';
 import '../settings/settings_controller.dart';
 import 'document_list_controller.dart';
 import 'document_summary_table.dart';
@@ -168,6 +172,32 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
     },
   );
 
+  Future<void> _exportDocument(DocumentSummary summary) async {
+    final BusinessDocument document;
+    try {
+      document = await ref
+          .read(documentRepositoryProvider)
+          .getDocument(summary.documentId);
+    } on Object {
+      _showProblem("Couldn't export ${summary.documentNumber}");
+      return;
+    }
+    if (!mounted) return;
+    await exportDocumentAsPdf(
+      context: context,
+      ref: ref,
+      document: document,
+      issues: _issuesOf(document),
+    );
+  }
+
+  /// A delivery order is checked against its sales order in the editor, which
+  /// this page has no copy of, so only the other document types are checked.
+  List<ValidationIssue> _issuesOf(BusinessDocument document) =>
+      document.documentType == DocumentType.deliveryOrder
+      ? const []
+      : ref.read(documentValidatorProvider).validate(document);
+
   Future<void> _confirmAndDelete(DocumentSummary summary) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -298,6 +328,7 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
                     onOpen: (summary) => _openDocument(summary.documentId),
                     onUpgrade: _upgradeDocument,
                     onDuplicate: _duplicateDocument,
+                    onExportPdf: _exportDocument,
                     onDelete: _confirmAndDelete,
                     findUpgradeBlocker: _findUpgradeBlocker,
                   );
