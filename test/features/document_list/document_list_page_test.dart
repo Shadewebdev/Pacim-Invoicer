@@ -48,6 +48,7 @@ Future<FakeDocumentRepository> pumpListPage(
   List<BusinessDocument> seeded = const [],
   FakeNumberSequenceRepository? sequences,
   FakePdfOutputTarget? pdfTarget,
+  PdfDocumentBuilder? pdfBuilder,
 }) async {
   tester.view.physicalSize = const Size(1200, 800);
   tester.view.devicePixelRatio = 1;
@@ -67,7 +68,9 @@ Future<FakeDocumentRepository> pumpListPage(
           pdfTarget ?? FakePdfOutputTarget(),
         ),
         sharesPdfInsteadOfSavingProvider.overrideWithValue(false),
-        pdfFontSetProvider.overrideWith((ref) async => fakePdfFontSet()),
+        pdfDocumentBuilderProvider.overrideWithValue(
+          pdfBuilder ?? fakePdfBuilder,
+        ),
       ],
       child: MaterialApp(
         theme: buildAppTheme(
@@ -162,9 +165,6 @@ void main() {
     );
     await openContextMenu(tester, 'Export Co');
     await tester.tap(find.text('Export PDF'));
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 1500)),
-    );
     await tester.pumpAndSettle();
 
     expect(pdfTarget.savedNames, ['QT-2026-0003 Export Co.pdf']);
@@ -175,6 +175,86 @@ void main() {
       container.read(statusBarMessageProvider),
       'Exported QT-2026-0003 Export Co.pdf',
     );
+  });
+
+  testWidgets('exporting an over-delivered delivery order lists the issue', (
+    tester,
+  ) async {
+    final pdfTarget = FakePdfOutputTarget();
+    final salesOrder = buildTestDocument(
+      type: DocumentType.salesOrder,
+      documentId: 'so-1',
+      chainId: 'chain-x',
+      lineItems: [buildTestLine(id: 'so-line', quantityScaled: 5000)],
+    );
+    deliveryOrderWith(String id, String number, int quantity) =>
+        buildTestDocument(
+          type: DocumentType.deliveryOrder,
+          documentId: id,
+          chainId: 'chain-x',
+          sourceDocumentId: 'so-1',
+          lineItems: [
+            buildTestLine(
+              id: '$id-line',
+              quantityScaled: quantity,
+            ).copyWith(sourceLineItemId: 'so-line'),
+          ],
+        ).copyWith(
+          documentNumber: number,
+          customerDetails: const CustomerDetails(customerName: 'Late Co'),
+        );
+    await pumpListPage(
+      tester,
+      type: DocumentType.deliveryOrder,
+      pdfTarget: pdfTarget,
+      seeded: [
+        salesOrder,
+        deliveryOrderWith('do-0', 'DO-2026-0001', 3000),
+        deliveryOrderWith('do-1', 'DO-2026-0002', 3000),
+      ],
+    );
+    await tester.tap(
+      find.text('DO-2026-0002').first,
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Export PDF'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Export with issues?'), findsOneWidget);
+    expect(
+      find.text('An item delivers more than remains on the sales order'),
+      findsOneWidget,
+    );
+    expect(pdfTarget.savedNames, isEmpty);
+  });
+
+  testWidgets('exporting twice while one export runs exports once', (
+    tester,
+  ) async {
+    final pdfTarget = FakePdfOutputTarget();
+    final gate = Completer<void>();
+    await pumpListPage(
+      tester,
+      pdfTarget: pdfTarget,
+      pdfBuilder: (document, images) async {
+        await gate.future;
+        return fakePdfBuilder(document, images);
+      },
+      seeded: [
+        _document(id: 'q1', number: 'QT-2026-0003', customer: 'Export Co'),
+      ],
+    );
+
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await openContextMenu(tester, 'Export Co');
+      await tester.tap(find.text('Export PDF'));
+      await tester.pumpAndSettle();
+    }
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(pdfTarget.outputs, hasLength(1));
   });
 
   testWidgets('delete asks for confirmation with the document number', (

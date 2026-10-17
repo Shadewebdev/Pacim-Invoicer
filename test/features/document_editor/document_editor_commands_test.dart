@@ -51,7 +51,7 @@ Future<void> _pump(
       ...fakeStorageOverrides(documents: _documents),
       pdfOutputTargetProvider.overrideWithValue(_pdfTarget),
       sharesPdfInsteadOfSavingProvider.overrideWithValue(false),
-      pdfFontSetProvider.overrideWith((ref) async => fakePdfFontSet()),
+      pdfDocumentBuilderProvider.overrideWithValue(fakePdfBuilder),
       idGeneratorProvider.overrideWithValue(SequentialIdGenerator()),
       clockProvider.overrideWithValue(() => DateTime(2026, 10, 17)),
     ],
@@ -87,15 +87,6 @@ Future<void> _pump(
         ),
       ),
     ),
-  );
-  await tester.pumpAndSettle();
-}
-
-/// Lets a PDF export finish. Building the PDF takes real time, which
-/// pumpAndSettle does not wait for.
-Future<void> _settleExport(WidgetTester tester) async {
-  await tester.runAsync(
-    () => Future<void>.delayed(const Duration(milliseconds: 1500)),
   );
   await tester.pumpAndSettle();
 }
@@ -476,14 +467,14 @@ void main() {
       await _pump(tester, [noCustomer()]);
 
       await tester.tap(find.widgetWithText(TextButton, 'Export PDF'));
-      await _settleExport(tester);
+      await tester.pumpAndSettle();
 
       expect(find.text('Export with issues?'), findsOneWidget);
       expect(find.text('Customer name is empty'), findsOneWidget);
       expect(_pdfTarget.savedNames, isEmpty);
 
       await tester.tap(find.widgetWithText(FilledButton, 'Export anyway'));
-      await _settleExport(tester);
+      await tester.pumpAndSettle();
 
       expect(_pdfTarget.savedNames, ['QT-2026-0001.pdf']);
       expect(statusMessage(), 'Exported QT-2026-0001.pdf');
@@ -493,7 +484,7 @@ void main() {
       await _pump(tester, [noCustomer()]);
 
       await tester.tap(find.widgetWithText(TextButton, 'Export PDF'));
-      await _settleExport(tester);
+      await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
 
@@ -505,7 +496,7 @@ void main() {
       await _pump(tester, [buildTestDocument()]);
 
       await tester.tap(find.widgetWithText(TextButton, 'Export PDF'));
-      await _settleExport(tester);
+      await tester.pumpAndSettle();
 
       expect(find.text('Export with issues?'), findsNothing);
       expect(_pdfTarget.savedNames, ['QT-2026-0001 Acme Trading.pdf']);
@@ -519,7 +510,7 @@ void main() {
       _controllerFor('doc-1').updateNotes('typed just now');
 
       await _pressChord(tester, LogicalKeyboardKey.keyP);
-      await _settleExport(tester);
+      await tester.pumpAndSettle();
 
       expect(_pdfTarget.savedNames, hasLength(1));
       expect(_documents.storedDocuments.single.notes, 'typed just now');
@@ -530,7 +521,7 @@ void main() {
       _pdfTarget.saveSucceeds = false;
 
       await tester.tap(find.widgetWithText(TextButton, 'Export PDF'));
-      await _settleExport(tester);
+      await tester.pumpAndSettle();
 
       expect(statusMessage(), isNull);
       expect(find.byType(SnackBar), findsNothing);
@@ -541,10 +532,20 @@ void main() {
       _pdfTarget.failSave = true;
 
       await tester.tap(find.widgetWithText(TextButton, 'Export PDF'));
-      await _settleExport(tester);
+      await tester.pumpAndSettle();
 
       expect(find.text("Couldn't export QT-2026-0001"), findsOneWidget);
       expect(statusMessage(), isNull);
+    });
+
+    testWidgets('a failed print says so', (tester) async {
+      await _pump(tester, [buildTestDocument()]);
+      _pdfTarget.failPrint = true;
+
+      await tester.tap(find.widgetWithText(TextButton, 'Print'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Couldn't print QT-2026-0001"), findsOneWidget);
     });
 
     testWidgets('Print sends the PDF to the printer and shows no message', (
@@ -553,7 +554,7 @@ void main() {
       await _pump(tester, [buildTestDocument()]);
 
       await tester.tap(find.widgetWithText(TextButton, 'Print'));
-      await _settleExport(tester);
+      await tester.pumpAndSettle();
 
       expect(_pdfTarget.printedNames, ['QT-2026-0001 Acme Trading.pdf']);
       expect(statusMessage(), isNull);

@@ -16,6 +16,7 @@ import '../../domain/models/document_summary.dart';
 import '../../domain/models/document_type.dart';
 import '../../domain/models/validation_issue.dart';
 import '../../shared/formatting/date_formatter.dart';
+import '../document_editor/delivery_validation_context.dart';
 import '../document_editor/document_commands.dart';
 import '../pdf_export/pdf_export_flow.dart';
 import '../settings/settings_controller.dart';
@@ -42,6 +43,7 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
   Timer? _searchTimer;
   String? _shownCount;
   bool _isCreating = false;
+  bool _isExporting = false;
 
   DocumentType get _type => widget.documentType;
 
@@ -173,30 +175,40 @@ class _DocumentListPageState extends ConsumerState<DocumentListPage> {
   );
 
   Future<void> _exportDocument(DocumentSummary summary) async {
-    final BusinessDocument document;
+    if (_isExporting) return;
+    _isExporting = true;
     try {
-      document = await ref
-          .read(documentRepositoryProvider)
-          .getDocument(summary.documentId);
-    } on Object {
-      _showProblem("Couldn't export ${summary.documentNumber}");
-      return;
+      final BusinessDocument document;
+      final List<ValidationIssue> issues;
+      try {
+        final repository = ref.read(documentRepositoryProvider);
+        document = await repository.getDocument(summary.documentId);
+        final deliveryContext = await loadDeliveryValidationContext(
+          repository,
+          document,
+        );
+        issues = ref
+            .read(documentValidatorProvider)
+            .validate(
+              document,
+              salesOrder: deliveryContext.salesOrder,
+              otherDeliveryOrders: deliveryContext.otherDeliveryOrders,
+            );
+      } on Object {
+        _showProblem("Couldn't export ${summary.documentNumber}");
+        return;
+      }
+      if (!mounted) return;
+      await exportDocumentAsPdf(
+        context: context,
+        ref: ref,
+        document: document,
+        issues: issues,
+      );
+    } finally {
+      _isExporting = false;
     }
-    if (!mounted) return;
-    await exportDocumentAsPdf(
-      context: context,
-      ref: ref,
-      document: document,
-      issues: _issuesOf(document),
-    );
   }
-
-  /// A delivery order is checked against its sales order in the editor, which
-  /// this page has no copy of, so only the other document types are checked.
-  List<ValidationIssue> _issuesOf(BusinessDocument document) =>
-      document.documentType == DocumentType.deliveryOrder
-      ? const []
-      : ref.read(documentValidatorProvider).validate(document);
 
   Future<void> _confirmAndDelete(DocumentSummary summary) async {
     final confirmed = await showDialog<bool>(

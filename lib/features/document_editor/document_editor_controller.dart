@@ -11,12 +11,12 @@ import '../../domain/models/company_details.dart';
 import '../../domain/models/currency_format.dart';
 import '../../domain/models/customer_details.dart';
 import '../../domain/models/document_layout_options.dart';
-import '../../domain/models/document_type.dart';
 import '../../domain/models/line_item.dart';
 import '../../domain/models/pricing_terms.dart';
 import '../../domain/models/signature_block.dart';
 import '../../domain/services/document_factory.dart';
 import '../../domain/services/document_totals_calculator.dart';
+import 'delivery_validation_context.dart';
 import 'document_editor_state.dart';
 
 const Duration _autosaveDelay = Duration(seconds: 2);
@@ -303,26 +303,12 @@ class DocumentEditorController extends AsyncNotifier<DocumentEditorState> {
   Future<DocumentEditorState> _loadDeliveryContext(
     BusinessDocument document,
   ) async {
-    if (document.documentType != DocumentType.deliveryOrder ||
-        document.sourceDocumentId == null) {
-      return _revalidated(DocumentEditorState(document: document));
-    }
-    final chain = await _repository.getDocumentsInChain(document.chainId);
-    BusinessDocument? salesOrder;
-    final otherDeliveryOrders = <BusinessDocument>[];
-    for (final candidate in chain) {
-      if (candidate.documentType == DocumentType.salesOrder) {
-        salesOrder = candidate;
-      } else if (candidate.documentType == DocumentType.deliveryOrder &&
-          candidate.documentId != document.documentId) {
-        otherDeliveryOrders.add(candidate);
-      }
-    }
+    final context = await loadDeliveryValidationContext(_repository, document);
     return _revalidated(
       DocumentEditorState(
         document: document,
-        salesOrder: salesOrder,
-        otherDeliveryOrders: otherDeliveryOrders,
+        salesOrder: context.salesOrder,
+        otherDeliveryOrders: context.otherDeliveryOrders,
       ),
     );
   }

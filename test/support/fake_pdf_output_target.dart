@@ -1,8 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:pacim_invoicer/features/pdf_export/pdf_export_service.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:pacim_invoicer/features/pdf_export/pdf_fonts.dart';
+import 'package:pacim_invoicer/domain/models/business_document.dart';
 
 /// Records what would have been printed, saved or shared, so no test touches
 /// a platform dialog.
@@ -13,6 +12,9 @@ class FakePdfOutputTarget implements PdfOutputTarget {
   /// Makes [savePdf] throw, like a disk error.
   bool failSave = false;
 
+  /// Makes [printPdf] throw.
+  bool failPrint = false;
+
   final List<String> printedNames = [];
   final List<String> savedNames = [];
   final List<String> sharedNames = [];
@@ -20,6 +22,7 @@ class FakePdfOutputTarget implements PdfOutputTarget {
 
   @override
   Future<void> printPdf(Uint8List bytes, String name) async {
+    if (failPrint) throw StateError('fake print failure');
     outputs.add(bytes);
     printedNames.add(name);
   }
@@ -40,10 +43,8 @@ class FakePdfOutputTarget implements PdfOutputTarget {
   }
 }
 
-/// Built-in PDF fonts, so tests never load the bundled font files.
-PdfFontSet fakePdfFontSet() => PdfFontSet(
-  regular: pw.Font.helvetica(),
-  medium: pw.Font.helvetica(),
-  semiBold: pw.Font.helveticaBold(),
-  bold: pw.Font.helveticaBold(),
-);
+/// A PDF builder that returns at once, for tests that are not about the PDF.
+Future<Uint8List> fakePdfBuilder(
+  BusinessDocument document,
+  Map<String, Uint8List> imagesByAssetId,
+) async => Uint8List.fromList('%PDF-fake ${document.documentNumber}'.codeUnits);

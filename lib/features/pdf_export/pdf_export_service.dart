@@ -12,8 +12,17 @@ export 'pdf_output_target.dart';
 
 const int _maximumFileNameLength = 120;
 const String _fileExtension = '.pdf';
-final RegExp _forbiddenFileNameCharacters = RegExp(r'[<>:"/\|?*\x00-\x1f]');
+final RegExp _forbiddenFileNameCharacters = RegExp(
+  r'[<>:"/\\|?*\x00-\x1f\x7f-\x9f]',
+);
+final RegExp _trailingSpacesAndDots = RegExp(r'[ .]+$');
 final RegExp _whitespaceRun = RegExp(r'\s+');
+
+/// Builds the PDF bytes of a document from its images by asset id.
+typedef PdfDocumentBuilder = Future<Uint8List> Function(
+  BusinessDocument document,
+  Map<String, Uint8List> imagesByAssetId,
+);
 
 enum PdfExportOutcome { exported, cancelled }
 
@@ -22,13 +31,13 @@ class PdfExportService {
   PdfExportService({
     required this.target,
     required this.assets,
-    required this.loadFonts,
+    required this.buildPdf,
     required this.sharesInsteadOfSaving,
   });
 
   final PdfOutputTarget target;
   final AssetRepository assets;
-  final Future<PdfFontSet> Function() loadFonts;
+  final PdfDocumentBuilder buildPdf;
 
   /// True where there is no save dialog (Android and web), so the PDF is
   /// shared or downloaded instead.
@@ -42,10 +51,10 @@ class PdfExportService {
         .replaceAll(_whitespaceRun, ' ')
         .trim();
     final maximumBaseLength = _maximumFileNameLength - _fileExtension.length;
-    final capped = base.length > maximumBaseLength
-        ? base.substring(0, maximumBaseLength)
-        : base;
-    return '$capped$_fileExtension';
+    final capped = String.fromCharCodes(base.runes.take(maximumBaseLength));
+    // Windows drops trailing spaces and dots from file names.
+    final trimmed = capped.replaceAll(_trailingSpacesAndDots, '');
+    return '$trimmed$_fileExtension';
   }
 
   Future<void> printDocument(BusinessDocument document) async {
@@ -77,8 +86,7 @@ class PdfExportService {
       final image = await assets.loadImage(assetId);
       if (image != null) imagesByAssetId[assetId] = image;
     }
-    return DocumentPdfBuilder(fonts: await loadFonts())
-        .build(document, imagesByAssetId: imagesByAssetId);
+    return buildPdf(document, imagesByAssetId);
   }
 }
 
@@ -87,9 +95,24 @@ final pdfOutputTargetProvider = Provider<PdfOutputTarget>(
   (ref) => const PlatformPdfOutputTarget(),
 );
 
-/// The bundled fonts, loaded once and kept.
-final pdfFontSetProvider = FutureProvider<PdfFontSet>(
-  (ref) => PdfFontSet.load(),
+/// The bundled fonts, loaded once and kept. A failed load is not kept, so the
+/// next export tries again.
+final pdfFontSetProvider = FutureProvider<PdfFontSet>((ref) async {
+  try {
+    return await PdfFontSet.load();
+  } on Object {
+    ref.invalidateSelf();
+    rethrow;
+  }
+});
+
+/// Turns a document into PDF bytes with the bundled fonts.
+final pdfDocumentBuilderProvider = Provider<PdfDocumentBuilder>(
+  (ref) => (document, imagesByAssetId) async {
+    final fonts = await ref.read(pdfFontSetProvider.future);
+    return DocumentPdfBuilder(fonts: fonts)
+        .build(document, imagesByAssetId: imagesByAssetId);
+  },
 );
 
 /// Android and web have no save dialog, so they share or download instead.
@@ -101,7 +124,7 @@ final pdfExportServiceProvider = Provider<PdfExportService>(
   (ref) => PdfExportService(
     target: ref.watch(pdfOutputTargetProvider),
     assets: ref.watch(assetRepositoryProvider),
-    loadFonts: () => ref.read(pdfFontSetProvider.future),
+    buildPdf: ref.watch(pdfDocumentBuilderProvider),
     sharesInsteadOfSaving: ref.watch(sharesPdfInsteadOfSavingProvider),
   ),
 );
