@@ -16,8 +16,14 @@ import 'grid_cell_field.dart';
 /// menu. It sits in the page margin, so the table keeps the PDF's geometry.
 const double lineItemGutterWidth = 44;
 
-/// Width of the touch-only hit area over the gutter.
+/// Width of the touch-only menu hit area.
 const double _touchTargetWidth = 48;
+
+/// Where the touch target starts: just right of the 16 px drag handle (which
+/// ends 24 px before the gutter's edge, beside the 20 px menu button), so the
+/// handle stays draggable and the target grows to the right, over the row
+/// number cell, instead.
+const double _touchTargetLeft = lineItemGutterWidth - 24;
 
 /// Vertical padding of a table row; with one line of text a row is 32 px.
 const double _rowVerticalPadding = 4;
@@ -241,7 +247,7 @@ class _LineItemRowState extends State<LineItemRow> {
               // wider target overlays the gutter without moving anything.
               if (_isTouchPlatform && !widget.isLocked)
                 Positioned(
-                  left: 0,
+                  left: _touchTargetLeft,
                   top: 0,
                   bottom: 0,
                   width: _touchTargetWidth,

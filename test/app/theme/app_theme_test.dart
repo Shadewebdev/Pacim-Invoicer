@@ -154,6 +154,10 @@ void main() {
         ),
       ),
     );
+    addTearDown(
+      () => FocusManager.instance.highlightStrategy =
+          FocusHighlightStrategy.automatic,
+    );
     final probe = find.byType(_FocusRingProbe);
     double? ringWidth() =>
         Theme.of(tester.element(probe)).filledButtonTheme.style!.side!
@@ -169,8 +173,6 @@ void main() {
         FocusHighlightStrategy.alwaysTouch;
     await tester.pump();
     expect(ringWidth(), isNull);
-
-    FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic;
   });
 }
 

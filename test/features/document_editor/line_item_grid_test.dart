@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show debugDefaultTargetPlatformOverride;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -493,6 +495,33 @@ void main() {
       await tester.pumpAndSettle();
       expect(_lineIds, ['line-2', 'line-1']);
       await _flushSaves();
+    });
+
+    testWidgets('the drag handle still reorders rows on touch platforms', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      // The binding checks for leftover overrides before tear-downs run, so
+      // the override is cleared in a finally block instead.
+      try {
+        await _pumpPage(
+          tester,
+          buildTestDocument(),
+          platform: TargetPlatform.android,
+        );
+        final handle = find.byIcon(Icons.drag_indicator).first;
+        final gesture = await tester.startGesture(tester.getCenter(handle));
+        for (var step = 0; step < 10; step++) {
+          await gesture.moveBy(const Offset(0, 8));
+          await tester.pump();
+        }
+        await gesture.up();
+        await tester.pumpAndSettle();
+        expect(_lineIds, ['line-2', 'line-1']);
+        await _flushSaves();
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
     });
 
     testWidgets('a locked number cell keeps its printed form when focused', (
