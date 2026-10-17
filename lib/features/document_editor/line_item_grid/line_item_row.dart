@@ -5,6 +5,7 @@ import '../../../app/theme/document_type_colors.dart';
 import '../../../domain/models/currency_format.dart';
 import '../../../domain/models/line_item.dart';
 import '../../../shared/document_page_metrics.dart';
+import '../../../shared/line_item_cell_text.dart';
 import '../../../shared/formatting/money_formatter.dart';
 import '../../../shared/formatting/number_input_parser.dart';
 import '../../../shared/formatting/quantity_formatter.dart';
@@ -25,73 +26,6 @@ ValueKey<String> lineItemCellKey(String lineItemId, LineItemColumn column) =>
 /// The columns a user can type into.
 bool isEditableColumn(LineItemColumn column) =>
     column != LineItemColumn.rowNumber && column != LineItemColumn.amount;
-
-bool isNumericColumn(LineItemColumn column) =>
-    column == LineItemColumn.quantity ||
-    column == LineItemColumn.unitPrice ||
-    column == LineItemColumn.discount ||
-    column == LineItemColumn.amount;
-
-String lineItemColumnLabel(LineItemColumn column) => switch (column) {
-  LineItemColumn.rowNumber => '#',
-  LineItemColumn.description => 'Description',
-  LineItemColumn.unit => 'Unit',
-  LineItemColumn.quantity => 'Qty',
-  LineItemColumn.unitPrice => 'Unit price',
-  LineItemColumn.discount => 'Discount',
-  LineItemColumn.amount => 'Amount',
-};
-
-/// The text an editable cell shows when it is not focused.
-String cellDisplayText(
-  LineItemColumn column,
-  LineItem line,
-  CurrencyFormat format,
-) => switch (column) {
-  LineItemColumn.quantity => formatQuantity(
-    line.quantityScaled,
-    format: format,
-  ),
-  LineItemColumn.unitPrice => formatMoney(
-    line.unitPriceMinor,
-    format,
-    includeSymbol: false,
-  ),
-  LineItemColumn.discount =>
-    line.discountPercentScaled == 0
-        ? ''
-        : '${_percentText(line.discountPercentScaled, format)}%',
-  _ => cellEditText(column, line, format),
-};
-
-/// The raw text an editable cell shows while focused.
-String cellEditText(
-  LineItemColumn column,
-  LineItem line,
-  CurrencyFormat format,
-) => switch (column) {
-  LineItemColumn.description => line.description,
-  LineItemColumn.unit => line.unit,
-  LineItemColumn.quantity => formatQuantity(
-    line.quantityScaled,
-    format: format,
-  ),
-  LineItemColumn.unitPrice => formatMoney(
-    line.unitPriceMinor,
-    format.copyWith(thousandsSeparator: ''),
-    includeSymbol: false,
-  ),
-  LineItemColumn.discount =>
-    line.discountPercentScaled == 0
-        ? ''
-        : _percentText(line.discountPercentScaled, format),
-  LineItemColumn.rowNumber || LineItemColumn.amount => '',
-};
-
-/// Percentages are scaled by 100 and quantities by 1000, so multiplying by 10
-/// lets the quantity formatter print them.
-String _percentText(int percentScaled, CurrencyFormat format) =>
-    formatQuantity(percentScaled * 10, format: format);
 
 /// The line with [text] typed into [column], or null when the text is not a
 /// valid value: not a number, a negative quantity or discount, or a discount

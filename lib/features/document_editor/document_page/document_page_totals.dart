@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repository_providers.dart';
 import '../../../shared/formatting/money_formatter.dart';
-import '../../../shared/formatting/quantity_formatter.dart';
+import '../../../shared/formatting/percent_formatter.dart';
 import 'document_page_styles.dart';
 import 'watched_document.dart';
 
@@ -40,8 +40,7 @@ class DocumentPageTotals extends ConsumerWidget {
             if (terms.isTaxEnabled)
               _TotalsRow(
                 label: terms.taxLabel,
-                note:
-                    '${formatQuantity(terms.taxRatePercentScaled * 10, format: format)}%',
+                note: formatTaxRate(terms),
                 amount: formatMoney(totals.taxMinor, format),
               ),
             const SizedBox(height: 6),

@@ -8,6 +8,7 @@ import '../../../domain/models/business_document.dart';
 import '../../../domain/models/document_type.dart';
 import '../../../domain/services/delivery_progress_calculator.dart';
 import '../../../shared/document_page_metrics.dart';
+import '../../../shared/line_item_cell_text.dart';
 import '../document_editor_controller.dart';
 import '../document_page/document_page_styles.dart';
 import '../document_page/watched_document.dart';

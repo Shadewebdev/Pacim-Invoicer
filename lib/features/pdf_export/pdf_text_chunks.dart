@@ -54,14 +54,18 @@ List<String> splitTextIntoChunks(
 typedef _EstimatedLine = ({String text, String separatorBefore});
 
 /// Greedy word wrap of [paragraph]; an empty paragraph is one empty line.
+/// Lengths and cuts count Unicode code points, so a cut never splits a
+/// surrogate pair.
 List<_EstimatedLine> _estimateLines(String paragraph, int charsPerLine) {
   final lines = <_EstimatedLine>[];
   String? line;
+  var lineLength = 0;
   var lineSeparator = '';
 
-  void startLine(String separator, String text) {
+  void startLine(String separator, List<int> runes) {
     if (line != null) lines.add((text: line!, separatorBefore: lineSeparator));
-    line = text;
+    line = String.fromCharCodes(runes);
+    lineLength = runes.length;
     lineSeparator = separator;
   }
 
@@ -69,18 +73,20 @@ List<_EstimatedLine> _estimateLines(String paragraph, int charsPerLine) {
   for (var index = 0; index < words.length; index++) {
     final joiner = index == 0 ? '' : ' ';
     final word = words[index];
+    final wordRunes = word.runes.toList();
     final current = line;
     if (current != null &&
-        current.length + joiner.length + word.length <= charsPerLine) {
+        lineLength + joiner.length + wordRunes.length <= charsPerLine) {
       line = '$current$joiner$word';
+      lineLength += joiner.length + wordRunes.length;
       continue;
     }
     // A word longer than a line is cut into line-sized pieces.
     var separator = joiner;
-    var rest = word;
+    var rest = wordRunes;
     while (rest.length > charsPerLine) {
-      startLine(separator, rest.substring(0, charsPerLine));
-      rest = rest.substring(charsPerLine);
+      startLine(separator, rest.sublist(0, charsPerLine));
+      rest = rest.sublist(charsPerLine);
       separator = '';
     }
     startLine(separator, rest);

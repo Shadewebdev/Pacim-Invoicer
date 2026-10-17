@@ -14,9 +14,8 @@ import '../../domain/services/document_totals_calculator.dart';
 import '../../shared/document_page_metrics.dart';
 import '../../shared/formatting/date_formatter.dart';
 import '../../shared/formatting/money_formatter.dart';
-import '../../shared/formatting/quantity_formatter.dart';
-import '../document_editor/line_item_grid/line_item_row.dart'
-    show cellDisplayText, isNumericColumn, lineItemColumnLabel;
+import '../../shared/formatting/percent_formatter.dart';
+import '../../shared/line_item_cell_text.dart';
 import 'pdf_fonts.dart';
 import 'pdf_text_chunks.dart';
 
@@ -36,7 +35,9 @@ const double _extraLineHeightEm = 0.1;
 const double _averageGlyphWidthEm = 0.5;
 
 /// Width of the type-coloured band down the left edge of every page.
-const double stageBandWidthPoints = 4;
+final double stageBandWidthPoints = _pt(
+  DocumentPageMetrics.stageBandWidthPx.toDouble(),
+);
 
 /// Turns a [BusinessDocument] into a paginated A4 PDF that mirrors the
 /// on-screen page: same geometry, sections, copy, typography and visibility
@@ -52,6 +53,15 @@ class DocumentPdfBuilder {
 
   static const _tokens = AppColorTokens.light;
   static const _maxPages = 200;
+
+  /// The footer prints on every page, so a long note is cut to this many
+  /// lines rather than crowding out the body.
+  static const footerNoteMaxLines = 3;
+
+  /// Header and customer blocks cannot split across pages, so each field is
+  /// capped: a page-tall address would otherwise fail the export.
+  static const addressMaxLines = 8;
+  static const shortFieldMaxLines = 2;
 
   static final double _margin =
       DocumentPageMetrics.marginMm * DocumentPageMetrics.pointsPerMm;
@@ -173,7 +183,11 @@ class DocumentPdfBuilder {
             children: [
               pw.Expanded(
                 child: layout.showFooterNote && document.footerNote.isNotEmpty
-                    ? _field(document.footerNote, _caption)
+                    ? _field(
+                        document.footerNote,
+                        _caption,
+                        maxLines: footerNoteMaxLines,
+                      )
                     : pw.SizedBox(),
               ),
               if (layout.showPageNumbers) ...[
@@ -237,14 +251,25 @@ class DocumentPdfBuilder {
     String text,
     pw.TextStyle style, {
     pw.TextAlign textAlign = pw.TextAlign.left,
+    int maxLines = shortFieldMaxLines,
   }) => pw.Padding(
     padding: _fieldInset,
-    child: pw.Text(text, style: style, textAlign: textAlign),
+    child: pw.Text(
+      text,
+      style: style,
+      textAlign: textAlign,
+      maxLines: maxLines,
+    ),
   );
 
   List<pw.Widget> _fields(List<(String, pw.TextStyle)> texts) => [
     for (final (text, style) in texts)
       if (text.isNotEmpty) _field(text, style),
+  ];
+
+  List<pw.Widget> _addressField(List<String> lines) => [
+    if (lines.isNotEmpty)
+      _field(lines.join('\n'), _body, maxLines: addressMaxLines),
   ];
 
   // Sections.
@@ -278,7 +303,9 @@ class DocumentPdfBuilder {
                     fontSizePx: AppTypography.paneTitle,
                   ),
                 ),
-                (company.addressLines.join('\n'), _body),
+              ]),
+              ..._addressField(company.addressLines),
+              ..._fields([
                 if (layout.showCompanyRegistration)
                   (company.registrationNumber, _caption),
                 (company.phone, _caption),
@@ -359,7 +386,9 @@ class DocumentPdfBuilder {
               ..._fields([
                 (customer.customerName, _emphasis),
                 (customer.attentionTo, _body),
-                (customer.addressLines.join('\n'), _body),
+              ]),
+              ..._addressField(customer.addressLines),
+              ..._fields([
                 (customer.phone, _caption),
                 (customer.email, _caption),
               ]),
@@ -373,9 +402,7 @@ class DocumentPdfBuilder {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text('Deliver to', style: _caption),
-                    ..._fields([
-                      (customer.deliveryAddressLines.join('\n'), _body),
-                    ]),
+                    ..._addressField(customer.deliveryAddressLines),
                   ],
                 )
               : pw.SizedBox(),
@@ -540,8 +567,7 @@ class DocumentPdfBuilder {
               row(
                 terms.taxLabel,
                 formatMoney(totals.taxMinor, format),
-                note:
-                    '${formatQuantity(terms.taxRatePercentScaled * 10, format: format)}%',
+                note: formatTaxRate(terms),
               ),
             pw.SizedBox(height: _pt(6)),
             pw.DecoratedBox(

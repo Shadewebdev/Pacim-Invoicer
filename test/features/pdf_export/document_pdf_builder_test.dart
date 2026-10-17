@@ -132,7 +132,8 @@ void main() {
 
       final bytes = await builder.build(document, imagesByAssetId: const {});
 
-      expect(_pageCount(bytes), greaterThanOrEqualTo(1));
+      // About 80 wrapped lines plus the header: it must flow onto page 2.
+      expect(_pageCount(bytes), inInclusiveRange(2, 4));
       final table = builder
           .buildContent(document, imagesByAssetId: const {})
           .whereType<pw.Table>()
@@ -295,5 +296,94 @@ void main() {
       closeTo(18 * PdfPageFormat.mm, 0.01),
     );
     expect(theme.buildBackground, isNotNull);
+    // The 4 px screen band at 0.75 pt per pixel.
+    expect(stageBandWidthPoints, closeTo(3, 1e-9));
+  });
+
+  group('worst-case text', () {
+    Future<int> buildPages(BusinessDocument document) async {
+      final bytes = await builder.build(document, imagesByAssetId: const {});
+      expect(latin1.decode(bytes.sublist(0, 4)), '%PDF');
+      return _pageCount(bytes);
+    }
+
+    BusinessDocument withDescription(String description) => buildTestDocument(
+      lineItems: [buildTestLine().copyWith(description: description)],
+    );
+
+    test('3000 wide characters with no spaces paginate', () async {
+      final pages = await buildPages(withDescription('W' * 3000));
+      expect(pages, allOf(greaterThan(1), lessThan(200)));
+    });
+
+    test('wide words mixed with line breaks paginate', () async {
+      final description = List.generate(
+        250,
+        (i) => i % 4 == 3 ? 'WWWWWWWWWWWWWWWW\n' : 'WWWWWWWWWWWWWWWW ',
+      ).join();
+      expect(description.length, greaterThanOrEqualTo(4000));
+      final pages = await buildPages(withDescription(description));
+      expect(pages, allOf(greaterThan(1), lessThan(200)));
+    });
+
+    test('notes of 3000 wide characters paginate', () async {
+      final pages = await buildPages(
+        buildTestDocument().copyWith(notes: 'W' * 3000),
+      );
+      expect(pages, allOf(greaterThan(1), lessThan(200)));
+    });
+
+    test('a 2000-character footer note is clamped to three lines', () async {
+      final footerNote = List.filled(400, 'note').join(' ');
+      final document = buildTestDocument().copyWith(footerNote: footerNote);
+      final footerTexts = _descendants(
+        builder.buildFooter(document, pageNumber: 1, pageCount: 1),
+      ).whereType<pw.RichText>().toList();
+      final noteText = footerTexts.singleWhere(
+        (text) => _spanText(text.text) == footerNote,
+      );
+      expect(noteText.maxLines, DocumentPdfBuilder.footerNoteMaxLines);
+
+      final short = await buildPages(buildTestDocument(lineItems: _lines(60)));
+      final long = await buildPages(
+        buildTestDocument(lineItems: _lines(60))
+            .copyWith(footerNote: footerNote),
+      );
+      expect(long, lessThanOrEqualTo(short + 1));
+    });
+
+    test('a 200-line customer address builds without throwing', () async {
+      final document = buildTestDocument().copyWith(
+        customerDetails: buildTestDocument().customerDetails.copyWith(
+          addressLines: [for (var i = 0; i < 200; i++) 'Address line $i'],
+          deliveryAddressLines: [for (var i = 0; i < 200; i++) 'Dock $i'],
+        ),
+        companyDetails: buildTestDocument().companyDetails.copyWith(
+          addressLines: [for (var i = 0; i < 200; i++) 'Company line $i'],
+          companyName: List.filled(200, 'Name').join(' '),
+        ),
+      );
+      expect(await buildPages(document), lessThan(200));
+      expect(
+        await buildPages(
+          document.copyWith(documentType: DocumentType.deliveryOrder),
+        ),
+        lessThan(200),
+      );
+    });
+
+    test('CJK and Tamil text builds without throwing', () async {
+      final document =
+          buildTestDocument(
+            lineItems: [buildTestLine().copyWith(description: '陈大文 தமிழ்')],
+          ).copyWith(
+            customerDetails: buildTestDocument().customerDetails.copyWith(
+              customerName: '陈大文',
+              attentionTo: 'தமிழ்',
+            ),
+            notes: '陈大文 தமிழ் ' * 50,
+          );
+      expect(await buildPages(document), greaterThanOrEqualTo(1));
+    });
   });
 }

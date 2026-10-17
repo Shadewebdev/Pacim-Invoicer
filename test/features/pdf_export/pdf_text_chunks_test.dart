@@ -73,4 +73,19 @@ void main() {
     final chunks = splitTextIntoChunks(text, charsPerLine: 25);
     expect(_withoutWhitespace(chunks.join()), _withoutWhitespace(text));
   });
+
+  test('cuts never split a character outside the basic plane', () {
+    final word = '😀' * 50;
+    final chunks = splitTextIntoChunks(
+      word,
+      charsPerLine: 7,
+      maxLinesPerChunk: 1,
+    );
+    expect(chunks.length, greaterThan(1));
+    for (final chunk in chunks) {
+      expect(chunk.runes.every((rune) => rune == 0x1F600), isTrue);
+      expect(chunk.runes.length, lessThanOrEqualTo(7));
+    }
+    expect(chunks.join(), word);
+  });
 }

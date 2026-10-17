@@ -3,7 +3,9 @@ import 'package:pacim_invoicer/domain/models/currency_format.dart';
 import 'package:pacim_invoicer/shared/formatting/date_formatter.dart';
 import 'package:pacim_invoicer/shared/formatting/money_formatter.dart';
 import 'package:pacim_invoicer/shared/formatting/number_input_parser.dart';
+import 'package:pacim_invoicer/shared/formatting/percent_formatter.dart';
 import 'package:pacim_invoicer/shared/formatting/quantity_formatter.dart';
+import 'package:pacim_invoicer/domain/models/pricing_terms.dart';
 
 void main() {
   const myr = CurrencyFormat.defaultFormat;
@@ -122,5 +124,29 @@ void main() {
 
   test('formatDocumentDate', () {
     expect(formatDocumentDate(DateTime(2026, 10, 17)), '17 Oct 2026');
+  });
+
+  group('tax rate', () {
+    test('prints the rate with trimmed decimals and a percent sign', () {
+      PricingTerms terms(int rate, [CurrencyFormat? format]) => PricingTerms(
+        currencyFormat: format ?? CurrencyFormat.defaultFormat,
+        taxRatePercentScaled: rate,
+      );
+      expect(formatTaxRate(terms(800)), '8%');
+      expect(formatTaxRate(terms(850)), '8.5%');
+      expect(formatTaxRate(terms(825)), '8.25%');
+      expect(
+        formatTaxRate(
+          terms(
+            650,
+            CurrencyFormat.defaultFormat.copyWith(
+              decimalSeparator: ',',
+              thousandsSeparator: '.',
+            ),
+          ),
+        ),
+        '6,5%',
+      );
+    });
   });
 }
