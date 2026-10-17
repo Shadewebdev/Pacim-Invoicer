@@ -111,4 +111,31 @@ void main() {
       expect(tester.getSize(find.byType(type)).height, 32, reason: '$type');
     }
   });
+
+  for (final brightness in Brightness.values) {
+    test(
+      'every button style shows a 2 px action ring when focused in $brightness',
+      () {
+        final theme = buildAppTheme(
+          brightness: brightness,
+          platform: TargetPlatform.windows,
+        );
+        final action = theme.extension<AppColorTokens>()!.action;
+        final styles = {
+          'filled': theme.filledButtonTheme.style,
+          'elevated': theme.elevatedButtonTheme.style,
+          'outlined': theme.outlinedButtonTheme.style,
+          'text': theme.textButtonTheme.style,
+          'icon': theme.iconButtonTheme.style,
+        };
+        for (final entry in styles.entries) {
+          final side = entry.value!.side!.resolve({WidgetState.focused});
+          expect(side?.width, 2, reason: entry.key);
+          expect(side?.color, action, reason: entry.key);
+        }
+        final resting = theme.outlinedButtonTheme.style!.side!.resolve({});
+        expect(resting?.color, theme.extension<AppColorTokens>()!.rule);
+      },
+    );
+  }
 }

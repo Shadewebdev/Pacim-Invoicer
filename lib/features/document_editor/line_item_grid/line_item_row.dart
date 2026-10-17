@@ -283,6 +283,8 @@ class _LineItemRowState extends State<LineItemRow> {
                   height: 24,
                 ),
                 style: IconButton.styleFrom(
+                  // Touch platforms would otherwise pad it out to 48 px and overflow.
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),
                   ),

@@ -19,7 +19,13 @@ const double _dateColumnWidth = 120;
 const double _totalColumnWidth = 130;
 const double _statusColumnWidth = 90;
 const double _chainColumnWidth = 260;
-const double _chainColumnMinimumTableWidth = 760;
+const double _chainColumnMinimumTableWidth = 900;
+
+/// Below this table width the issue date goes too, and columns tighten.
+const double _dateColumnMinimumTableWidth = 600;
+const double _compactNumberColumnWidth = 116;
+const double _compactTotalColumnWidth = 100;
+const double _compactStatusColumnWidth = 72;
 const double _loadMoreDistance = 240;
 
 /// The listing table: sortable header, 32 px rows, a right-click menu per row.
@@ -96,6 +102,7 @@ class _DocumentSummaryTableState extends State<DocumentSummaryTable> {
         final layout = _ColumnLayout(
           showsTotal: widget.documentType.showsPricing,
           showsChain: showsChain,
+          showsDate: constraints.maxWidth >= _dateColumnMinimumTableWidth,
         );
         return Column(
           children: [
@@ -135,10 +142,23 @@ class _DocumentSummaryTableState extends State<DocumentSummaryTable> {
 }
 
 class _ColumnLayout {
-  const _ColumnLayout({required this.showsTotal, required this.showsChain});
+  const _ColumnLayout({
+    required this.showsTotal,
+    required this.showsChain,
+    required this.showsDate,
+  });
 
   final bool showsTotal;
   final bool showsChain;
+  final bool showsDate;
+
+  double get numberWidth =>
+      showsDate ? _numberColumnWidth : _compactNumberColumnWidth;
+  double get totalWidth =>
+      showsDate ? _totalColumnWidth : _compactTotalColumnWidth;
+  double get statusWidth =>
+      showsDate ? _statusColumnWidth : _compactStatusColumnWidth;
+  double get statusInset => showsDate ? 16 : 8;
 }
 
 class _HeaderRow extends StatelessWidget {
@@ -210,23 +230,24 @@ class _HeaderRow extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: _numberColumnWidth,
+            width: layout.numberWidth,
             child: sortable('Number', DocumentSortField.documentNumber),
           ),
           Expanded(child: sortable('Customer', DocumentSortField.customerName)),
-          SizedBox(
-            width: _dateColumnWidth,
-            child: sortable('Issue date', DocumentSortField.issueDate),
-          ),
+          if (layout.showsDate)
+            SizedBox(
+              width: _dateColumnWidth,
+              child: sortable('Issue date', DocumentSortField.issueDate),
+            ),
           if (layout.showsTotal)
             SizedBox(
-              width: _totalColumnWidth,
+              width: layout.totalWidth,
               child: sortable('Total', DocumentSortField.grandTotal, end: true),
             ),
           SizedBox(
-            width: _statusColumnWidth,
+            width: layout.statusWidth,
             child: Padding(
-              padding: const EdgeInsets.only(left: 16),
+              padding: EdgeInsets.only(left: layout.statusInset),
               child: plain('Status'),
             ),
           ),
@@ -393,7 +414,7 @@ class _SummaryRowState extends State<_SummaryRow> {
                 child: Row(
                   children: [
                     SizedBox(
-                      width: _numberColumnWidth,
+                      width: widget.layout.numberWidth,
                       child: Text(
                         summary.documentNumber,
                         style: baseStyle,
@@ -407,16 +428,17 @@ class _SummaryRowState extends State<_SummaryRow> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    SizedBox(
-                      width: _dateColumnWidth,
-                      child: Text(
-                        formatDocumentDate(summary.issueDate),
-                        style: baseStyle,
+                    if (widget.layout.showsDate)
+                      SizedBox(
+                        width: _dateColumnWidth,
+                        child: Text(
+                          formatDocumentDate(summary.issueDate),
+                          style: baseStyle,
+                        ),
                       ),
-                    ),
                     if (widget.layout.showsTotal)
                       SizedBox(
-                        width: _totalColumnWidth,
+                        width: widget.layout.totalWidth,
                         child: Text(
                           _formatTotal(),
                           textAlign: TextAlign.end,
@@ -425,9 +447,11 @@ class _SummaryRowState extends State<_SummaryRow> {
                         ),
                       ),
                     SizedBox(
-                      width: _statusColumnWidth,
+                      width: widget.layout.statusWidth,
                       child: Padding(
-                        padding: const EdgeInsets.only(left: 16),
+                        padding: EdgeInsets.only(
+                          left: widget.layout.statusInset,
+                        ),
                         child: Text(
                           summary.isLocked ? 'Locked' : 'Draft',
                           style: baseStyle.copyWith(

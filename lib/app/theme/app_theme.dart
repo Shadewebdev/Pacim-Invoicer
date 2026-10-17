@@ -14,6 +14,20 @@ final _controlShape = RoundedRectangleBorder(
   borderRadius: BorderRadius.circular(4),
 );
 
+/// The 2 px action-colour outline every focusable control shows while it has
+/// keyboard focus. [restingSide] is kept when the control is not focused.
+WidgetStateProperty<BorderSide?> _focusRingSide(
+  Color ringColor, {
+  BorderSide? restingSide,
+}) {
+  return WidgetStateProperty.resolveWith((states) {
+    if (states.contains(WidgetState.focused)) {
+      return BorderSide(color: ringColor, width: 2);
+    }
+    return restingSide;
+  });
+}
+
 ThemeData buildAppTheme({
   required Brightness brightness,
   required TargetPlatform platform,
@@ -98,7 +112,7 @@ ThemeData buildAppTheme({
         visualDensity: _controlDensity,
         shape: _controlShape,
         textStyle: textTheme.labelLarge,
-      ),
+      ).copyWith(side: _focusRingSide(tokens.action)),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
@@ -107,16 +121,24 @@ ThemeData buildAppTheme({
         elevation: 0,
         shape: _controlShape,
         textStyle: textTheme.labelLarge,
-      ),
+      ).copyWith(side: _focusRingSide(tokens.action)),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        minimumSize: _controlMinimumSize,
-        visualDensity: _controlDensity,
-        shape: _controlShape,
-        side: BorderSide(color: tokens.rule),
-        textStyle: textTheme.labelLarge,
-      ),
+      style:
+          OutlinedButton.styleFrom(
+            minimumSize: _controlMinimumSize,
+            visualDensity: _controlDensity,
+            shape: _controlShape,
+            textStyle: textTheme.labelLarge,
+          ).copyWith(
+            side: _focusRingSide(
+              tokens.action,
+              restingSide: BorderSide(color: tokens.rule),
+            ),
+          ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: ButtonStyle(side: _focusRingSide(tokens.action)),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
@@ -124,7 +146,7 @@ ThemeData buildAppTheme({
         visualDensity: _controlDensity,
         shape: _controlShape,
         textStyle: textTheme.labelLarge,
-      ),
+      ).copyWith(side: _focusRingSide(tokens.action)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       isDense: true,

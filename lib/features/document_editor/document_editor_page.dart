@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/shell/app_breakpoints.dart';
 import '../../app/shell/navigation_leave_guard.dart';
 import '../../app/theme/app_color_tokens.dart';
 import '../../app/theme/app_typography.dart';
@@ -23,7 +24,12 @@ import 'properties_pane/properties_pane.dart';
 import 'unsaved_changes_guard.dart';
 
 const double _commandBarHeight = 44;
+const double _commandBarSecondRowHeight = 36;
 const double _breadcrumbHeight = 40;
+
+/// The commands and the status/zoom group together need about this much; any
+/// narrower and the second group wraps onto its own row.
+const double _commandBarSplitMinimumWidth = 1300;
 
 /// The A4 page needs about 794 px and the pane 300 px, so the pane only fits
 /// beside the page from 1000 px; narrower editors open it as a bottom sheet.
@@ -265,63 +271,54 @@ class _CommandBar extends ConsumerWidget {
         color: tokens.chrome,
         border: Border(bottom: BorderSide(color: tokens.rule)),
       ),
-      child: SizedBox(
-        height: _commandBarHeight,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      Tooltip(
-                        message: state.isLocked
-                            ? 'Locked documents cannot be changed'
-                            : 'Save (Ctrl+S)',
-                        child: FilledButton(
-                          onPressed: state.isLocked
-                              ? null
-                              : () => unawaited(actions.save()),
-                          child: const Text('Save'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      if (nextStage != null)
-                        _CommandButton(
-                          label: upgradeLabel,
-                          tooltip:
-                              blockerReason ?? '$upgradeLabel (Ctrl+Shift+U)',
-                          onPressed: canUpgrade
-                              ? () => unawaited(actions.upgradeCurrent())
-                              : null,
-                        ),
-                      _CommandButton(
-                        label: 'Duplicate',
-                        tooltip: 'Duplicate as new draft',
-                        onPressed: () => unawaited(actions.duplicate()),
-                      ),
-                      if (!state.isLocked)
-                        _CommandButton(
-                          label: 'Delete',
-                          tooltip: 'Delete this draft',
-                          onPressed: () => unawaited(actions.delete()),
-                        ),
-                      _CommandButton(
-                        label: 'Export PDF',
-                        tooltip: 'Export PDF (Ctrl+P)',
-                        onPressed: () => unawaited(actions.exportPdf()),
-                      ),
-                      _CommandButton(
-                        label: 'Print',
-                        tooltip: 'Print',
-                        onPressed: () => unawaited(actions.printDocument()),
-                      ),
-                    ],
-                  ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final actionButtons = <Widget>[
+              Tooltip(
+                message: state.isLocked
+                    ? 'Locked documents cannot be changed'
+                    : 'Save (Ctrl+S)',
+                child: FilledButton(
+                  onPressed: state.isLocked
+                      ? null
+                      : () => unawaited(actions.save()),
+                  child: const Text('Save'),
                 ),
               ),
+              const SizedBox(width: 8),
+              if (nextStage != null)
+                _CommandButton(
+                  label: upgradeLabel,
+                  tooltip: blockerReason ?? '$upgradeLabel (Ctrl+Shift+U)',
+                  onPressed: canUpgrade
+                      ? () => unawaited(actions.upgradeCurrent())
+                      : null,
+                ),
+              _CommandButton(
+                label: 'Duplicate',
+                tooltip: 'Duplicate as new draft',
+                onPressed: () => unawaited(actions.duplicate()),
+              ),
+              if (!state.isLocked)
+                _CommandButton(
+                  label: 'Delete',
+                  tooltip: 'Delete this draft',
+                  onPressed: () => unawaited(actions.delete()),
+                ),
+              _CommandButton(
+                label: 'Export PDF',
+                tooltip: 'Export PDF (Ctrl+P)',
+                onPressed: () => unawaited(actions.exportPdf()),
+              ),
+              _CommandButton(
+                label: 'Print',
+                tooltip: 'Print',
+                onPressed: () => unawaited(actions.printDocument()),
+              ),
+            ];
+            final trailing = <Widget>[
               _SaveStatusLabel(
                 status: state.saveStatus,
                 onRetry: controller.retrySave,
@@ -341,16 +338,57 @@ class _CommandBar extends ConsumerWidget {
                   style: const TextStyle(fontSize: AppTypography.caption),
                 ),
               ),
-            ],
-          ),
+            ];
+            Widget scrollingRow(List<Widget> children) => SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: children),
+            );
+            // Narrower than both groups side by side, the status and view
+            // controls drop to a second row, so no command is hidden.
+            if (constraints.maxWidth < _commandBarSplitMinimumWidth) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Phones scroll the commands; wider bars wrap them.
+                  if (constraints.maxWidth < AppBreakpoints.compactMaxWidth)
+                    SizedBox(
+                      height: _commandBarHeight,
+                      width: double.infinity,
+                      child: scrollingRow(actionButtons),
+                    )
+                  else
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        for (final button in actionButtons)
+                          SizedBox(height: _commandBarHeight, child: button),
+                      ],
+                    ),
+                  SizedBox(
+                    height: _commandBarSecondRowHeight,
+                    width: double.infinity,
+                    child: scrollingRow(trailing),
+                  ),
+                ],
+              );
+            }
+            return SizedBox(
+              height: _commandBarHeight,
+              child: Row(
+                children: [
+                  Expanded(child: scrollingRow(actionButtons)),
+                  ...trailing,
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
   }
 }
 
-/// The chain breadcrumb, with the "+" chip offered only when the next stage
-/// can be created.
 class _BreadcrumbBar extends ConsumerWidget {
   const _BreadcrumbBar({
     required this.document,

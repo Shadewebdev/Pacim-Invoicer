@@ -1,14 +1,20 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/shell/app_breakpoints.dart';
 import '../../../app/theme/app_color_tokens.dart';
 import 'document_page_view.dart';
 import 'page_zoom_provider.dart';
 
 /// Breathing room around the page inside the canvas, in logical pixels.
 const double documentCanvasPadding = 24;
+
+/// Tighter padding on phone-width canvases, where every pixel counts.
+const double _compactCanvasPadding = 8;
 
 /// The scrolling, zoomable surface the A4 page sits on.
 ///
@@ -30,12 +36,21 @@ class DocumentCanvas extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final zoom = ref.watch(pageZoomProvider);
     final surface = Theme.of(context).extension<AppColorTokens>()!.surface;
-    final scaledWidth = DocumentPageView.pageWidth * zoom;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         onViewportWidthChanged(constraints.maxWidth);
-        final contentWidth = scaledWidth + 2 * documentCanvasPadding;
+        // Below 600 px the page always scales down to the screen width, even
+        // past the zoom floor, rather than needing a sideways scroll.
+        final isCompact = constraints.maxWidth < AppBreakpoints.compactMaxWidth;
+        final padding = isCompact
+            ? _compactCanvasPadding
+            : documentCanvasPadding;
+        final requestedWidth = DocumentPageView.pageWidth * zoom;
+        final scaledWidth = isCompact
+            ? math.min(requestedWidth, constraints.maxWidth - 2 * padding)
+            : requestedWidth;
+        final contentWidth = scaledWidth + 2 * padding;
         return ColoredBox(
           color: surface,
           child: SingleChildScrollView(
@@ -58,7 +73,7 @@ class DocumentCanvas extends ConsumerWidget {
                     );
                   },
                   child: Padding(
-                    padding: const EdgeInsets.all(documentCanvasPadding),
+                    padding: EdgeInsets.all(padding),
                     child: Center(
                       child: SizedBox(
                         width: scaledWidth,
