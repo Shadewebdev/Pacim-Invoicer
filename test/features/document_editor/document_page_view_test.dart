@@ -11,8 +11,12 @@ import 'package:pacim_invoicer/domain/models/document_layout_options.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
 import 'package:pacim_invoicer/features/document_editor/document_editor_controller.dart';
 import 'package:pacim_invoicer/features/document_editor/document_editor_page.dart';
+import 'package:pacim_invoicer/features/document_editor/document_page/document_page_header.dart';
 import 'package:pacim_invoicer/features/document_editor/document_page/document_page_view.dart';
 import 'package:pacim_invoicer/features/document_editor/document_page/page_zoom_provider.dart';
+import 'package:pacim_invoicer/features/document_editor/line_item_grid/line_item_grid.dart';
+import 'package:pacim_invoicer/features/document_editor/line_item_grid/line_item_row.dart';
+import 'package:pacim_invoicer/shared/document_page_metrics.dart';
 
 import '../../support/document_builders.dart';
 import '../../support/fake_repositories.dart';
@@ -198,6 +202,29 @@ void main() {
     expect(page.height, closeTo(DocumentPageView.pageHeight, 0.5));
     // The footer sits within the bottom margin of the A4 page.
     expect(page.bottom - footer, lessThan(100));
+  });
+
+  testWidgets('item table and header sit on the PDF margins', (tester) async {
+    await _pumpPage(tester, buildTestDocument());
+    final page = tester.getRect(find.byType(DocumentPageView));
+    final margin = DocumentPageMetrics.mmToLogicalPixels(
+      DocumentPageMetrics.marginMm.toDouble(),
+    );
+    // The column header row is the table without the gutter controls.
+    final table = tester.getRect(
+      find
+          .descendant(
+            of: find.byType(LineItemGrid),
+            matching: find.byType(LineItemTableRow),
+          )
+          .first,
+    );
+    final header = tester.getRect(find.byType(DocumentPageHeader));
+
+    expect(table.left - page.left, closeTo(margin, 0.5));
+    expect(table.width, closeTo(DocumentPageView.pageWidth - 2 * margin, 0.5));
+    expect(header.left, closeTo(table.left, 0.5));
+    expect(header.width, closeTo(table.width, 0.5));
   });
 
   testWidgets('Save commits the text of a focused field before saving', (
