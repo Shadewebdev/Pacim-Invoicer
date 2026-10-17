@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pacim_invoicer/app/theme/app_color_tokens.dart';
 import 'package:pacim_invoicer/app/theme/app_theme.dart';
+import 'package:pacim_invoicer/app/theme/keyboard_focus_ring_theme.dart';
 import 'package:pacim_invoicer/app/theme/document_type_colors.dart';
 import 'package:pacim_invoicer/domain/models/document_type.dart';
 
@@ -138,4 +139,44 @@ void main() {
       },
     );
   }
+
+  testWidgets('the focus ring follows keyboard versus pointer interaction', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(
+          brightness: Brightness.light,
+          platform: TargetPlatform.windows,
+        ),
+        home: const KeyboardFocusRingTheme(
+          child: Scaffold(body: _FocusRingProbe()),
+        ),
+      ),
+    );
+    final probe = find.byType(_FocusRingProbe);
+    double? ringWidth() =>
+        Theme.of(tester.element(probe)).filledButtonTheme.style!.side!
+            .resolve({WidgetState.focused})
+            ?.width;
+
+    FocusManager.instance.highlightStrategy =
+        FocusHighlightStrategy.alwaysTraditional;
+    await tester.pump();
+    expect(ringWidth(), 2);
+
+    FocusManager.instance.highlightStrategy =
+        FocusHighlightStrategy.alwaysTouch;
+    await tester.pump();
+    expect(ringWidth(), isNull);
+
+    FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic;
+  });
+}
+
+class _FocusRingProbe extends StatelessWidget {
+  const _FocusRingProbe();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox();
 }

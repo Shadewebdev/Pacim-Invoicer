@@ -15,6 +15,7 @@ import 'package:pacim_invoicer/domain/models/line_item.dart';
 import 'package:pacim_invoicer/features/document_editor/document_editor_controller.dart';
 import 'package:pacim_invoicer/features/document_editor/document_page/document_page_view.dart';
 import 'package:pacim_invoicer/features/document_editor/line_item_grid/line_item_grid.dart';
+import 'package:pacim_invoicer/features/document_editor/line_item_grid/line_item_row.dart';
 import 'package:pacim_invoicer/shared/document_page_metrics.dart';
 
 import '../../support/document_builders.dart';
@@ -28,6 +29,7 @@ Future<void> _pumpPage(
   WidgetTester tester,
   BusinessDocument document, {
   List<BusinessDocument> chain = const [],
+  TargetPlatform platform = TargetPlatform.windows,
 }) async {
   tester.view.physicalSize = const Size(1400, 2400);
   tester.view.devicePixelRatio = 1;
@@ -51,10 +53,7 @@ Future<void> _pumpPage(
     UncontrolledProviderScope(
       container: _container,
       child: MaterialApp(
-        theme: buildAppTheme(
-          brightness: Brightness.light,
-          platform: TargetPlatform.windows,
-        ),
+        theme: buildAppTheme(brightness: Brightness.light, platform: platform),
         home: Scaffold(
           body: SingleChildScrollView(
             child: Align(
@@ -547,6 +546,69 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Only 2 left to deliver'), findsOneWidget);
       await _flushSaves();
+    });
+  });
+
+  group('row menu without a hover', () {
+    /// A point on the row number cell, which has no field to grab the press.
+    Offset rowNumber(WidgetTester tester, String lineId) =>
+        tester.getTopLeft(find.byKey(ValueKey(lineId))) +
+        const Offset(lineItemGutterWidth + 8, 16);
+
+    testWidgets('long-pressing a row opens the row menu', (tester) async {
+      await _pumpPage(
+        tester,
+        buildTestDocument(),
+        platform: TargetPlatform.android,
+      );
+      expect(find.text('Duplicate row'), findsNothing);
+      await tester.longPressAt(rowNumber(tester, 'line-1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Duplicate row'), findsOneWidget);
+      await tester.tap(find.text('Duplicate row'));
+      await tester.pumpAndSettle();
+      expect(_lines, hasLength(3));
+      await _flushSaves();
+    });
+
+    testWidgets('right-clicking a row opens the row menu', (tester) async {
+      await _pumpPage(tester, buildTestDocument());
+      await tester.tapAt(
+        rowNumber(tester, 'line-1'),
+        buttons: kSecondaryButton,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Delete row'), findsOneWidget);
+    });
+
+    testWidgets('on touch platforms the menu button has a 48 px hit area', (
+      tester,
+    ) async {
+      await _pumpPage(
+        tester,
+        buildTestDocument(),
+        platform: TargetPlatform.android,
+      );
+      final button = find.byTooltip('Row actions').first;
+      final target = tester.getRect(
+        find.byKey(const ValueKey('rowMenuTouchTarget-line-1')),
+      );
+      expect(target.width, greaterThanOrEqualTo(44));
+      expect(target.contains(tester.getCenter(button)), isTrue);
+      await tester.tapAt(target.center);
+      await tester.pumpAndSettle();
+      expect(find.text('Insert row above'), findsOneWidget);
+    });
+
+    testWidgets('locked rows have no long-press menu', (tester) async {
+      await _pumpPage(
+        tester,
+        buildTestDocument(lockedAt: DateTime.utc(2026, 10, 17)),
+        platform: TargetPlatform.android,
+      );
+      await tester.longPressAt(rowNumber(tester, 'line-1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Duplicate row'), findsNothing);
     });
   });
 }

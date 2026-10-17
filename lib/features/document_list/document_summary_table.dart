@@ -22,6 +22,10 @@ const double _chainColumnWidth = 260;
 const double _chainColumnMinimumTableWidth = 900;
 
 /// Below this table width the issue date goes too, and columns tighten.
+///
+/// These thresholds compare the table's own width, not the window's: the
+/// sidebar or rail takes 56-220 px of the window, so the shared
+/// `AppBreakpoints` (window widths) would cut the columns at the wrong point.
 const double _dateColumnMinimumTableWidth = 600;
 const double _compactNumberColumnWidth = 116;
 const double _compactTotalColumnWidth = 100;

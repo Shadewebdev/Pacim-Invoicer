@@ -140,12 +140,9 @@ Future<void> runDocumentFlowScenario(WidgetTester tester) async {
 
   // 5. Export a PDF through the fake output target.
   await tester.tap(find.text('Export PDF'));
-  await tester.pump(const Duration(milliseconds: 300));
   await tester.pumpAndSettle();
-  if (find.text('Export anyway').evaluate().isNotEmpty) {
-    await tester.tap(find.text('Export anyway'));
-    await tester.pumpAndSettle();
-  }
+  // The finished flow is valid, so the export goes straight through.
+  expect(find.text('Export with issues?'), findsNothing);
   expect(pdfTarget.outputs, hasLength(1));
 }
 

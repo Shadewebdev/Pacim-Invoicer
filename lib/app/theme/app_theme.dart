@@ -18,10 +18,11 @@ final _controlShape = RoundedRectangleBorder(
 /// keyboard focus. [restingSide] is kept when the control is not focused.
 WidgetStateProperty<BorderSide?> _focusRingSide(
   Color ringColor, {
+  required bool showsRing,
   BorderSide? restingSide,
 }) {
   return WidgetStateProperty.resolveWith((states) {
-    if (states.contains(WidgetState.focused)) {
+    if (showsRing && states.contains(WidgetState.focused)) {
       return BorderSide(color: ringColor, width: 2);
     }
     return restingSide;
@@ -31,6 +32,10 @@ WidgetStateProperty<BorderSide?> _focusRingSide(
 ThemeData buildAppTheme({
   required Brightness brightness,
   required TargetPlatform platform,
+
+  /// Whether focused buttons draw their 2 px ring. [KeyboardFocusRingTheme]
+  /// turns it off after a mouse or touch interaction.
+  bool showsFocusRing = true,
 }) {
   final isDark = brightness == Brightness.dark;
   final tokens = isDark ? AppColorTokens.dark : AppColorTokens.light;
@@ -107,21 +112,27 @@ ThemeData buildAppTheme({
     ),
     dividerTheme: DividerThemeData(color: tokens.rule, space: 1, thickness: 1),
     filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        minimumSize: _controlMinimumSize,
-        visualDensity: _controlDensity,
-        shape: _controlShape,
-        textStyle: textTheme.labelLarge,
-      ).copyWith(side: _focusRingSide(tokens.action)),
+      style:
+          FilledButton.styleFrom(
+            minimumSize: _controlMinimumSize,
+            visualDensity: _controlDensity,
+            shape: _controlShape,
+            textStyle: textTheme.labelLarge,
+          ).copyWith(
+            side: _focusRingSide(tokens.action, showsRing: showsFocusRing),
+          ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
-      style: ElevatedButton.styleFrom(
-        minimumSize: _controlMinimumSize,
-        visualDensity: _controlDensity,
-        elevation: 0,
-        shape: _controlShape,
-        textStyle: textTheme.labelLarge,
-      ).copyWith(side: _focusRingSide(tokens.action)),
+      style:
+          ElevatedButton.styleFrom(
+            minimumSize: _controlMinimumSize,
+            visualDensity: _controlDensity,
+            elevation: 0,
+            shape: _controlShape,
+            textStyle: textTheme.labelLarge,
+          ).copyWith(
+            side: _focusRingSide(tokens.action, showsRing: showsFocusRing),
+          ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style:
@@ -133,20 +144,26 @@ ThemeData buildAppTheme({
           ).copyWith(
             side: _focusRingSide(
               tokens.action,
+              showsRing: showsFocusRing,
               restingSide: BorderSide(color: tokens.rule),
             ),
           ),
     ),
     iconButtonTheme: IconButtonThemeData(
-      style: ButtonStyle(side: _focusRingSide(tokens.action)),
+      style: ButtonStyle(
+        side: _focusRingSide(tokens.action, showsRing: showsFocusRing),
+      ),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(
-        minimumSize: _controlMinimumSize,
-        visualDensity: _controlDensity,
-        shape: _controlShape,
-        textStyle: textTheme.labelLarge,
-      ).copyWith(side: _focusRingSide(tokens.action)),
+      style:
+          TextButton.styleFrom(
+            minimumSize: _controlMinimumSize,
+            visualDensity: _controlDensity,
+            shape: _controlShape,
+            textStyle: textTheme.labelLarge,
+          ).copyWith(
+            side: _focusRingSide(tokens.action, showsRing: showsFocusRing),
+          ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       isDense: true,

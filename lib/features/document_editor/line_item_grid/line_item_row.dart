@@ -16,6 +16,9 @@ import 'grid_cell_field.dart';
 /// menu. It sits in the page margin, so the table keeps the PDF's geometry.
 const double lineItemGutterWidth = 44;
 
+/// Width of the touch-only hit area over the gutter.
+const double _touchTargetWidth = 48;
+
 /// Vertical padding of a table row; with one line of text a row is 32 px.
 const double _rowVerticalPadding = 4;
 
@@ -184,8 +187,20 @@ class _LineItemRowState extends State<LineItemRow> {
   bool _isHovered = false;
   bool _containsFocus = false;
 
+  bool get _isTouchPlatform => switch (Theme.of(context).platform) {
+    TargetPlatform.android || TargetPlatform.iOS => true,
+    _ => false,
+  };
+
+  // Touch has no hover, so the controls are always there to find.
   bool get _showsRowControls =>
-      _isHovered || _containsFocus || _menuController.isOpen;
+      _isTouchPlatform ||
+      _isHovered ||
+      _containsFocus ||
+      _menuController.isOpen;
+
+  void _toggleMenu() =>
+      _menuController.isOpen ? _menuController.close() : _menuController.open();
 
   @override
   Widget build(BuildContext context) {
@@ -196,21 +211,50 @@ class _LineItemRowState extends State<LineItemRow> {
         canRequestFocus: false,
         skipTraversal: true,
         onFocusChange: (hasFocus) => setState(() => _containsFocus = hasFocus),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: lineItemGutterWidth,
-              child: widget.isLocked ? null : _buildGutter(),
-            ),
-            Expanded(
-              child: LineItemTableRow(
-                columns: widget.columns,
-                bottomRule: DocumentPageStyles.tokens.rule,
-                cellFor: _buildCell,
+        child: GestureDetector(
+          // Long-press (touch) and right-click (desktop) open the row menu
+          // wherever the row is not an editable field.
+          behavior: HitTestBehavior.translucent,
+          onLongPress: widget.isLocked ? null : _menuController.open,
+          onSecondaryTapUp: widget.isLocked
+              ? null
+              : (_) => _menuController.open(),
+          child: Stack(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: lineItemGutterWidth,
+                    child: widget.isLocked ? null : _buildGutter(),
+                  ),
+                  Expanded(
+                    child: LineItemTableRow(
+                      columns: widget.columns,
+                      bottomRule: DocumentPageStyles.tokens.rule,
+                      cellFor: _buildCell,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
+              // The 20 px menu button is too small for a finger, so on touch a
+              // wider target overlays the gutter without moving anything.
+              if (_isTouchPlatform && !widget.isLocked)
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: _touchTargetWidth,
+                  child: GestureDetector(
+                    key: ValueKey(
+                      'rowMenuTouchTarget-${widget.line.lineItemId}',
+                    ),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _toggleMenu,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

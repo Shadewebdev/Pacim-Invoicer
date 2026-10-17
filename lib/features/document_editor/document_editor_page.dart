@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/shell/app_breakpoints.dart';
 import '../../app/shell/navigation_leave_guard.dart';
 import '../../app/theme/app_color_tokens.dart';
 import '../../app/theme/app_typography.dart';
@@ -29,7 +28,14 @@ const double _breadcrumbHeight = 40;
 
 /// The commands and the status/zoom group together need about this much; any
 /// narrower and the second group wraps onto its own row.
-const double _commandBarSplitMinimumWidth = 1300;
+const double _commandBarSplitMinimumWidth = 1450;
+
+/// The commands alone need about this much; narrower and they scroll in one
+/// row instead of wrapping, which caps the whole bar at two rows (80 px).
+const double _commandWrapMinimumWidth = 760;
+
+/// Gap between command buttons, wrapped or scrolling.
+const double _commandSpacing = 8;
 
 /// The A4 page needs about 794 px and the pane 300 px, so the pane only fits
 /// beside the page from 1000 px; narrower editors open it as a bottom sheet.
@@ -287,7 +293,6 @@ class _CommandBar extends ConsumerWidget {
                   child: const Text('Save'),
                 ),
               ),
-              const SizedBox(width: 8),
               if (nextStage != null)
                 _CommandButton(
                   label: upgradeLabel,
@@ -341,7 +346,7 @@ class _CommandBar extends ConsumerWidget {
             ];
             Widget scrollingRow(List<Widget> children) => SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: Row(children: children),
+              child: Row(spacing: _commandSpacing, children: children),
             );
             // Narrower than both groups side by side, the status and view
             // controls drop to a second row, so no command is hidden.
@@ -350,8 +355,7 @@ class _CommandBar extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Phones scroll the commands; wider bars wrap them.
-                  if (constraints.maxWidth < AppBreakpoints.compactMaxWidth)
+                  if (constraints.maxWidth < _commandWrapMinimumWidth)
                     SizedBox(
                       height: _commandBarHeight,
                       width: double.infinity,
@@ -359,6 +363,7 @@ class _CommandBar extends ConsumerWidget {
                     )
                   else
                     Wrap(
+                      spacing: _commandSpacing,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         for (final button in actionButtons)
@@ -389,6 +394,8 @@ class _CommandBar extends ConsumerWidget {
   }
 }
 
+/// The chain breadcrumb, with the "+" chip offered only when the next stage
+/// can be created.
 class _BreadcrumbBar extends ConsumerWidget {
   const _BreadcrumbBar({
     required this.document,

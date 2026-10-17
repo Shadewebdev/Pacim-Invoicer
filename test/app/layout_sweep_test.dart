@@ -6,6 +6,7 @@ import 'package:pacim_invoicer/app/pacim_invoicer_app.dart';
 import 'package:pacim_invoicer/app/theme/app_color_tokens.dart';
 import 'package:pacim_invoicer/app/theme/theme_mode_provider.dart';
 import 'package:pacim_invoicer/domain/models/customer_details.dart';
+import 'package:pacim_invoicer/features/document_editor/document_editor_page.dart';
 import 'package:pacim_invoicer/features/document_editor/document_page/document_page_view.dart';
 import 'package:pacim_invoicer/features/document_editor/document_page/document_page_styles.dart';
 
@@ -106,10 +107,11 @@ void main() {
     }
   }
 
-  // The status and view controls wrap to a second row rather than pushing
-  // commands out of reach.
-  for (final width in [1400.0, 1000.0, 800.0]) {
-    testWidgets('every editor command is clickable at ${width.toInt()}px', (
+  // The status and view controls drop to a second row rather than pushing
+  // commands out of reach; below 760 px the commands scroll in one row, which
+  // caps the bar at two rows (80 px).
+  for (final width in [1700.0, 1400.0, 1000.0, 800.0, 700.0, 650.0]) {
+    testWidgets('every editor command is reachable at ${width.toInt()}px', (
       tester,
     ) async {
       await _pump(
@@ -118,14 +120,27 @@ void main() {
         themeMode: ThemeMode.light,
         location: '/documents/doc-1',
       );
-      for (final label in ['Save', 'Duplicate', 'Export PDF', 'Print']) {
+      final barHeight =
+          tester.getTopLeft(find.byKey(const ValueKey('breadcrumbSlot'))).dy -
+          tester.getTopLeft(find.byType(DocumentEditorPage)).dy;
+      if (width < 760) {
+        expect(barHeight, lessThanOrEqualTo(80), reason: 'bar height');
+      }
+      for (final label in [
+        'Save',
+        'Duplicate',
+        'Export PDF',
+        'Print',
+        'Fit width',
+      ]) {
+        await tester.ensureVisible(find.text(label));
+        await tester.pumpAndSettle();
         expect(
           find.text(label).hitTestable(),
           findsOneWidget,
-          reason: '$label hidden at ${width.toInt()}px',
+          reason: '$label unreachable at ${width.toInt()}px',
         );
       }
-      expect(find.text('Fit width').hitTestable(), findsOneWidget);
     });
   }
 
