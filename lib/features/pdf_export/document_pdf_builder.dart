@@ -360,6 +360,7 @@ class DocumentPdfBuilder {
     padding: pw.EdgeInsets.only(top: _pt(2)),
     child: pw.Row(
       children: [
+        pw.SizedBox(width: 70),
         pw.Expanded(flex: 5, child: pw.Text(label, style: _caption)),
         pw.Expanded(
           flex: 6,

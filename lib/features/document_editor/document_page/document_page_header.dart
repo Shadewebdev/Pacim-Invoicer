@@ -211,6 +211,7 @@ class _LabelledRow extends StatelessWidget {
       padding: const EdgeInsets.only(top: 2),
       child: Row(
         children: [
+          const SizedBox(width: 100),
           Expanded(
             flex: 5,
             child: Text(label, style: DocumentPageStyles.caption),
